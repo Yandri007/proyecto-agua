@@ -1,0 +1,52 @@
+# Dependencias
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Variables de entorno (¡NO SUBIR NUNCA!)
+.env
+.env.local
+.env.production
+.env.backup
+
+# Base de datos local
+*.db
+*.sqlite
+*.sql
+data/
+pgdata/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+
+# IDE y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Configuración de usuario (seguridad)
+*.pem
+*.key
+*.crt
+*.p12
+
+# Archivos temporales
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# Archivos de compilación
+dist/
+build/
+*.exe
+*.dll
