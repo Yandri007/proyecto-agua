@@ -50,3 +50,10 @@ dist/
 build/
 *.exe
 *.dll
+
+#codegraph y agentes
+.agents/
+.codegraph/
+
+#builds
+frontend/build
