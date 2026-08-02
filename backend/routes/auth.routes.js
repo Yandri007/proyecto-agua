@@ -1,129 +1,726 @@
 const express = require('express');
-const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { body, validationResult } = require('express-validator');
+const { body, query, validationResult } = require('express-validator');
 const pool = require('../config/database');
+const env = require('../config/env');
 const { verifyToken, checkRole } = require('../middleware/auth');
+const { normalizeSlug, seedDefaultProducts } = require('../utils/tenant');
+const { createUserToken, findValidToken } = require('../utils/accountTokens');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { writeAudit } = require('../utils/audit');
+const { getPlan, requireActiveSubscription } = require('../utils/plans');
+const logger = require('../utils/logger');
+const { getCompanyModules } = require('../utils/modules');
 
-// Rate limiting para login
+const router = express.Router();
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Demasiados intentos de inicio de sesión. Espera 15 minutos.' },
+  limit: 10,
+  message: { error: 'Demasiados intentos. Espera 15 minutos antes de volver a intentar.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  message: { error: 'Se alcanzó el límite temporal de registros.' },
   standardHeaders: true,
   legacyHeaders: false
 });
 
-// 🔥 Registro con validaciones
-router.post('/register', [
-  body('nombre').notEmpty().withMessage('El nombre es requerido'),
-  body('email').isEmail().withMessage('Email inválido'),
-  body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres'),
-  body('telefono').optional().isString().withMessage('Teléfono inválido')
-], async (req, res) => {
-  // Validar errores
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ error: errors.array()[0].msg });
-  }
+const accountRecoveryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  message: { error: 'Espera antes de solicitar otro enlace.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
-  try {
-    const { nombre, email, password, telefono, direccion, rol } = req.body;
-    
-    const existingUser = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'El email ya está registrado' });
-    }
+const cookieOptions = {
+  httpOnly: true,
+  secure: env.nodeEnv === 'production',
+  sameSite: 'strict',
+  path: '/',
+  maxAge: 8 * 60 * 60 * 1000
+};
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const result = await pool.query(
-      'INSERT INTO usuarios (nombre, email, password, telefono, direccion, rol) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, nombre, email, rol',
-      [nombre, email, hashedPassword, telefono, direccion, rol || 'cliente']
-    );
-    
-    const newUser = result.rows[0];
-    
-    const token = jwt.sign(
-      { id: newUser.id, email: newUser.email, rol: newUser.rol },
-      process.env.JWT_SECRET || 'secreto_super_seguro',
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({ user: newUser, token });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
+const publicUser = (user) => ({
+  id: user.id,
+  nombre: user.nombre,
+  email: user.email,
+  email_verificado: Boolean(user.email_verificado_en),
+  ubicacion_consentida: Boolean(user.ubicacion_consentida_en),
+  rol: user.rol,
+  empresa: {
+    id: user.empresa_id,
+    nombre: user.empresa_nombre,
+    slug: user.empresa_slug,
+    plan: user.empresa_plan,
+    prueba_hasta: user.empresa_prueba_hasta,
+    suscripcion_estado: user.empresa_suscripcion_estado,
+    periodo_hasta: user.empresa_periodo_hasta,
+    modulos: getCompanyModules(user.empresa_modulos)
   }
 });
 
-// 🔥 Login con rate limiting
-router.post('/login', loginLimiter, [
-  body('email').isEmail().withMessage('Email inválido'),
-  body('password').notEmpty().withMessage('La contraseña es requerida')
-], async (req, res) => {
+const issueSession = (res, user) => {
+  const token = jwt.sign(
+    { id: user.id, sv: user.sesion_version },
+    env.jwtSecret,
+    { expiresIn: env.jwtExpiresIn, issuer: 'aquacontrol', audience: 'aquacontrol-web' }
+  );
+  res.cookie(env.sessionCookie, token, cookieOptions);
+};
+
+const clearSession = (res) => {
+  res.clearCookie(env.sessionCookie, {
+    httpOnly: true,
+    secure: env.nodeEnv === 'production',
+    sameSite: 'strict',
+    path: '/'
+  });
+};
+
+const handleValidation = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ error: errors.array()[0].msg });
   }
+  return next();
+};
 
+const userValidators = [
+  body('nombre')
+    .trim()
+    .isLength({ min: 2, max: 100 }).withMessage('El nombre debe tener entre 2 y 100 caracteres')
+    .matches(/^[\p{L}\p{M} .'-]+$/u).withMessage('El nombre contiene caracteres no permitidos'),
+  body('email').trim().isEmail().withMessage('Email inválido').normalizeEmail(),
+  body('password')
+    .isLength({ min: 10, max: 128 }).withMessage('La contraseña debe tener entre 10 y 128 caracteres'),
+  body('telefono')
+    .optional({ checkFalsy: true })
+    .trim()
+    .matches(/^[0-9+() -]{7,20}$/).withMessage('Teléfono inválido')
+];
+
+const enrichUserWithCompany = (user, company) => ({
+  ...user,
+  empresa_nombre: company.nombre,
+  empresa_slug: company.slug,
+  empresa_plan: company.plan,
+  empresa_prueba_hasta: company.prueba_hasta,
+  empresa_suscripcion_estado: company.suscripcion_estado,
+  empresa_periodo_hasta: company.periodo_hasta,
+  empresa_modulos: company.modulos
+});
+
+const deliverVerification = async (user, token) => {
   try {
-    const { email, password } = req.body;
-    
-    const result = await pool.query('SELECT * FROM usuarios WHERE email = $1', [email]);
-    const user = result.rows[0];
-    
-    if (!user) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+    return await sendVerificationEmail({ user, token });
+  } catch (error) {
+    logger.error('verification_email_failed', { error, userId: user.id });
+    return { delivered: false };
+  }
+};
+
+router.post(
+  '/register-empresa',
+  registerLimiter,
+  body('empresa_nombre')
+    .trim()
+    .isLength({ min: 2, max: 120 }).withMessage('El nombre de la empresa debe tener entre 2 y 120 caracteres'),
+  body('empresa_slug')
+    .optional({ checkFalsy: true })
+    .trim()
+    .toLowerCase()
+    .matches(/^[a-z0-9-]{2,80}$/).withMessage('El código de empresa solo puede usar letras, números y guiones'),
+  ...userValidators,
+  handleValidation,
+  async (req, res) => {
+    const {
+      empresa_nombre: empresaNombre,
+      nombre,
+      email,
+      password,
+      telefono
+    } = req.body;
+    const empresaSlug = normalizeSlug(req.body.empresa_slug || empresaNombre);
+    if (empresaSlug.length < 2) {
+      return res.status(400).json({ error: 'Elige un código de empresa válido' });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+      const hashedPassword = await bcrypt.hash(password, 12);
+      await client.query('BEGIN');
+      transactionStarted = true;
+
+      const companyResult = await client.query(
+        `INSERT INTO empresas (nombre, slug)
+         VALUES ($1, $2)
+         RETURNING id, nombre, slug, plan, prueba_hasta,
+                   suscripcion_estado, periodo_hasta`,
+        [empresaNombre, empresaSlug]
+      );
+      const company = companyResult.rows[0];
+      const userResult = await client.query(
+        `INSERT INTO usuarios
+          (empresa_id, nombre, email, password, telefono, rol)
+         VALUES ($1, $2, $3, $4, $5, 'admin')
+         RETURNING id, nombre, email, rol, empresa_id,
+                   email_verificado_en, sesion_version`,
+        [company.id, nombre, email, hashedPassword, telefono || null]
+      );
+      const user = enrichUserWithCompany(userResult.rows[0], company);
+      const verificationToken = await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+      await seedDefaultProducts(client, company.id);
+      await writeAudit({
+        client,
+        req,
+        user,
+        empresaId: company.id,
+        action: 'empresa.creada',
+        entity: 'empresas',
+        entityId: company.id
+      });
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      const emailResult = await deliverVerification(user, verificationToken);
+      return res.status(201).json({
+        message: 'Tu distribuidora está lista. Verifica tu correo para ingresar.',
+        requires_email_verification: true,
+        email_sent: emailResult.delivered,
+        development_url: emailResult.developmentUrl
+      });
+    } catch (error) {
+      if (transactionStarted) await client.query('ROLLBACK');
+      if (error.code === '23505') {
+        const duplicateSlug = error.constraint?.includes('slug');
+        return res.status(409).json({
+          error: duplicateSlug
+            ? 'Ese código de empresa ya está en uso'
+            : 'El email ya está registrado'
+        });
+      }
+      logger.error('company_registration_failed', { error });
+      return res.status(500).json({ error: 'No fue posible crear la distribuidora' });
+    } finally {
+      client.release();
     }
+  }
+);
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, rol: user.rol },
-      process.env.JWT_SECRET || 'secreto_super_seguro',
-      { expiresIn: '7d' }
-    );
+router.post(
+  '/register',
+  registerLimiter,
+  ...userValidators,
+  body('empresa_slug')
+    .trim()
+    .matches(/^[a-z0-9-]{2,80}$/).withMessage('Código de empresa inválido'),
+  body('direccion').optional({ checkFalsy: true }).trim().isLength({ max: 300 }),
+  handleValidation,
+  async (req, res) => {
+    const {
+      nombre,
+      email,
+      password,
+      telefono,
+      direccion,
+      empresa_slug: empresaSlug
+    } = req.body;
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+      const companyResult = await client.query(
+        `SELECT id, nombre, slug, plan, prueba_hasta,
+                suscripcion_estado, periodo_hasta
+         FROM empresas
+         WHERE slug = $1
+           AND estado = 'activa'
+           AND registro_clientes_habilitado = TRUE`,
+        [empresaSlug.toLowerCase()]
+      );
+      if (companyResult.rowCount === 0) {
+        return res.status(404).json({ error: 'Código de empresa no válido' });
+      }
 
-    res.json({ 
-      user: {
-        id: user.id,
-        nombre: user.nombre,
-        email: user.email,
-        rol: user.rol
-      }, 
-      token 
+      const company = companyResult.rows[0];
+      const hashedPassword = await bcrypt.hash(password, 12);
+      await client.query('BEGIN');
+      transactionStarted = true;
+      const result = await client.query(
+        `INSERT INTO usuarios
+          (empresa_id, nombre, email, password, telefono, direccion, rol)
+         VALUES ($1, $2, $3, $4, $5, $6, 'cliente')
+         RETURNING id, nombre, email, rol, empresa_id,
+                   email_verificado_en, sesion_version`,
+        [company.id, nombre, email, hashedPassword, telefono || null, direccion || null]
+      );
+      const user = enrichUserWithCompany(result.rows[0], company);
+      const verificationToken = await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      const emailResult = await deliverVerification(user, verificationToken);
+      return res.status(201).json({
+        message: 'Cuenta creada. Verifica tu correo para ingresar.',
+        requires_email_verification: true,
+        email_sent: emailResult.delivered,
+        development_url: emailResult.developmentUrl
+      });
+    } catch (error) {
+      if (transactionStarted) await client.query('ROLLBACK');
+      if (error.code === '23505') {
+        return res.status(409).json({ error: 'El email ya está registrado' });
+      }
+      logger.error('client_registration_failed', { error });
+      return res.status(500).json({ error: 'No fue posible crear la cuenta' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+router.post(
+  '/verify-email',
+  registerLimiter,
+  body('token').isString().isLength({ min: 20, max: 200 }).withMessage('Enlace de verificación inválido'),
+  handleValidation,
+  async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const tokenRecord = await findValidToken(client, req.body.token, 'verificacion_email');
+      if (!tokenRecord) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'El enlace venció o ya fue utilizado' });
+      }
+      await client.query(
+        `UPDATE usuarios
+         SET email_verificado_en = COALESCE(email_verificado_en, CURRENT_TIMESTAMP)
+         WHERE id = $1`,
+        [tokenRecord.usuario_id]
+      );
+      await client.query(
+        'UPDATE tokens_usuarios SET usado_en = CURRENT_TIMESTAMP WHERE id = $1',
+        [tokenRecord.id]
+      );
+      await client.query('COMMIT');
+      await writeAudit({
+        req,
+        empresaId: tokenRecord.empresa_id,
+        action: 'usuario.email_verificado',
+        entity: 'usuarios',
+        entityId: tokenRecord.usuario_id
+      });
+      return res.json({ message: 'Correo verificado. Ya puedes iniciar sesión.' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('email_verification_failed', { error });
+      return res.status(500).json({ error: 'No fue posible verificar el correo' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+router.post(
+  '/resend-verification',
+  accountRecoveryLimiter,
+  body('email').trim().isEmail().withMessage('Email inválido').normalizeEmail(),
+  handleValidation,
+  async (req, res) => {
+    let developmentUrl;
+    try {
+      const result = await pool.query(
+        `SELECT id, nombre, email
+         FROM usuarios
+         WHERE email = $1 AND estado = 'activo' AND email_verificado_en IS NULL`,
+        [req.body.email]
+      );
+      const user = result.rows[0];
+      if (user) {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const token = await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+          await client.query('COMMIT');
+          const emailResult = await deliverVerification(user, token);
+          developmentUrl = emailResult.developmentUrl;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        } finally {
+          client.release();
+        }
+      }
+    } catch (error) {
+      logger.error('verification_resend_failed', { error });
+    }
+    return res.json({
+      message: 'Si la cuenta está pendiente, recibirás un nuevo enlace.',
+      development_url: developmentUrl
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
   }
+);
+
+router.post(
+  '/forgot-password',
+  accountRecoveryLimiter,
+  body('email').trim().isEmail().withMessage('Email inválido').normalizeEmail(),
+  handleValidation,
+  async (req, res) => {
+    let developmentUrl;
+    try {
+      const result = await pool.query(
+        `SELECT id, nombre, email
+         FROM usuarios
+         WHERE email = $1 AND estado = 'activo'`,
+        [req.body.email]
+      );
+      const user = result.rows[0];
+      if (user) {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const token = await createUserToken(client, user.id, 'restablecer_password', 30);
+          await client.query('COMMIT');
+          const emailResult = await sendPasswordResetEmail({ user, token });
+          developmentUrl = emailResult.developmentUrl;
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        } finally {
+          client.release();
+        }
+      }
+    } catch (error) {
+      logger.error('password_reset_request_failed', { error });
+    }
+    return res.json({
+      message: 'Si el correo está registrado, recibirás un enlace de recuperación.',
+      development_url: env.nodeEnv === 'development' ? developmentUrl : undefined
+    });
+  }
+);
+
+router.post(
+  '/reset-password',
+  accountRecoveryLimiter,
+  body('token').isString().isLength({ min: 20, max: 200 }).withMessage('Enlace inválido'),
+  body('password')
+    .isLength({ min: 10, max: 128 }).withMessage('La contraseña debe tener entre 10 y 128 caracteres'),
+  handleValidation,
+  async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const hashedPassword = await bcrypt.hash(req.body.password, 12);
+      await client.query('BEGIN');
+      const tokenRecord = await findValidToken(client, req.body.token, 'restablecer_password');
+      if (!tokenRecord) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'El enlace venció o ya fue utilizado' });
+      }
+      await client.query(
+        `UPDATE usuarios
+         SET password = $1,
+             email_verificado_en = COALESCE(email_verificado_en, CURRENT_TIMESTAMP),
+             sesion_version = sesion_version + 1
+         WHERE id = $2`,
+        [hashedPassword, tokenRecord.usuario_id]
+      );
+      await client.query(
+        `UPDATE tokens_usuarios
+         SET usado_en = CURRENT_TIMESTAMP
+         WHERE usuario_id = $1 AND usado_en IS NULL`,
+        [tokenRecord.usuario_id]
+      );
+      await client.query('COMMIT');
+      clearSession(res);
+      await writeAudit({
+        req,
+        empresaId: tokenRecord.empresa_id,
+        action: 'usuario.password_restablecido',
+        entity: 'usuarios',
+        entityId: tokenRecord.usuario_id
+      });
+      return res.json({ message: 'Contraseña actualizada. Inicia sesión nuevamente.' });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('password_reset_failed', { error });
+      return res.status(500).json({ error: 'No fue posible cambiar la contraseña' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+router.post(
+  '/login',
+  loginLimiter,
+  body('email').trim().isEmail().withMessage('Email inválido').normalizeEmail(),
+  body('password').isString().notEmpty().withMessage('La contraseña es requerida'),
+  handleValidation,
+  async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const result = await pool.query(
+        `SELECT u.id, u.nombre, u.email, u.password, u.rol, u.empresa_id,
+                u.email_verificado_en, u.sesion_version, u.ubicacion_consentida_en,
+                e.nombre AS empresa_nombre, e.slug AS empresa_slug,
+                e.plan AS empresa_plan, e.prueba_hasta AS empresa_prueba_hasta,
+                e.suscripcion_estado AS empresa_suscripcion_estado,
+                e.periodo_hasta AS empresa_periodo_hasta,
+                e.modulos AS empresa_modulos
+         FROM usuarios u
+         JOIN empresas e ON e.id = u.empresa_id
+         WHERE u.email = $1 AND u.estado = 'activo' AND e.estado = 'activa'`,
+        [email]
+      );
+      const user = result.rows[0];
+      const validPassword = user ? await bcrypt.compare(password, user.password) : false;
+      if (!user || !validPassword) {
+        return res.status(401).json({ error: 'Credenciales inválidas' });
+      }
+      if (!user.email_verificado_en) {
+        return res.status(403).json({
+          error: 'Verifica tu correo antes de iniciar sesión',
+          code: 'EMAIL_NOT_VERIFIED'
+        });
+      }
+
+      await pool.query('UPDATE usuarios SET ultimo_acceso_en = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+      issueSession(res, user);
+      await writeAudit({
+        req,
+        user,
+        action: 'usuario.login',
+        entity: 'usuarios',
+        entityId: user.id
+      });
+      return res.json({ user: publicUser(user) });
+    } catch (error) {
+      logger.error('login_failed', { error });
+      return res.status(500).json({ error: 'No fue posible iniciar sesión' });
+    }
+  }
+);
+
+router.get('/me', verifyToken, (req, res) => {
+  return res.json({ user: publicUser(req.user) });
 });
 
-// Obtener todos los repartidores
-router.get('/repartidores', async (req, res) => {
+router.post('/logout', (req, res) => {
+  clearSession(res);
+  return res.json({ message: 'Sesión cerrada' });
+});
+
+router.post('/logout-all', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, nombre, email, telefono FROM usuarios WHERE rol = $1 ORDER BY id', ['repartidor']);
-    res.json(result.rows);
+    await pool.query(
+      'UPDATE usuarios SET sesion_version = sesion_version + 1 WHERE id = $1',
+      [req.user.id]
+    );
+    clearSession(res);
+    return res.json({ message: 'Todas las sesiones fueron cerradas' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: 'No fue posible cerrar las sesiones' });
   }
 });
 
-// Eliminar repartidor (solo admin)
+router.get('/empresa', verifyToken, checkRole(['admin']), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, nombre, slug, estado, plan, suscripcion_estado,
+              prueba_hasta, periodo_hasta, proveedor_pago,
+              registro_clientes_habilitado, modulos, creado_en
+       FROM empresas
+       WHERE id = $1`,
+      [req.user.empresa_id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Empresa no encontrada' });
+    }
+    return res.json(result.rows[0]);
+  } catch (error) {
+    logger.error('company_read_failed', { error, companyId: req.user.empresa_id });
+    return res.status(500).json({ error: 'No fue posible cargar los datos de la empresa' });
+  }
+});
+
+router.get('/repartidores', verifyToken, checkRole(['admin']), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, nombre, email, telefono, email_verificado_en
+       FROM usuarios
+       WHERE empresa_id = $1 AND rol = 'repartidor' AND estado = 'activo'
+       ORDER BY nombre`,
+      [req.user.empresa_id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    logger.error('drivers_read_failed', { error, companyId: req.user.empresa_id });
+    return res.status(500).json({ error: 'No fue posible cargar los repartidores' });
+  }
+});
+
+router.post(
+  '/repartidores',
+  verifyToken,
+  checkRole(['admin']),
+  requireActiveSubscription,
+  ...userValidators,
+  handleValidation,
+  async (req, res) => {
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+      const effectivePlan = req.user.empresa_plan === 'prueba'
+        ? getPlan('profesional')
+        : getPlan(req.user.empresa_plan);
+      const countResult = await client.query(
+        `SELECT COUNT(*)::INT AS total
+         FROM usuarios
+         WHERE empresa_id = $1 AND rol = 'repartidor' AND estado = 'activo'`,
+        [req.user.empresa_id]
+      );
+      if (effectivePlan.limits.drivers !== null
+          && countResult.rows[0].total >= effectivePlan.limits.drivers) {
+        return res.status(409).json({
+          error: `El plan permite hasta ${effectivePlan.limits.drivers} repartidores`,
+          code: 'PLAN_LIMIT_REACHED'
+        });
+      }
+
+      const { nombre, email, password, telefono } = req.body;
+      const hashedPassword = await bcrypt.hash(password, 12);
+      await client.query('BEGIN');
+      transactionStarted = true;
+      const result = await client.query(
+        `INSERT INTO usuarios
+          (empresa_id, nombre, email, password, telefono, rol)
+         VALUES ($1, $2, $3, $4, $5, 'repartidor')
+         RETURNING id, nombre, email, telefono, empresa_id`,
+        [req.user.empresa_id, nombre, email, hashedPassword, telefono || null]
+      );
+      const user = result.rows[0];
+      const verificationToken = await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+      await client.query('COMMIT');
+      transactionStarted = false;
+      const emailResult = await deliverVerification(user, verificationToken);
+      return res.status(201).json({
+        ...user,
+        email_verificado_en: null,
+        development_url: emailResult.developmentUrl
+      });
+    } catch (error) {
+      if (transactionStarted) await client.query('ROLLBACK');
+      if (error.code === '23505') {
+        return res.status(409).json({ error: 'El email ya está registrado' });
+      }
+      logger.error('driver_creation_failed', { error });
+      return res.status(500).json({ error: 'No fue posible crear el repartidor' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
 router.delete('/repartidor/:id', verifyToken, checkRole(['admin']), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Repartidor inválido' });
+  }
   try {
-    const { id } = req.params;
-    await pool.query('DELETE FROM usuarios WHERE id=$1 AND rol=$2', [id, 'repartidor']);
-    res.json({ message: 'Repartidor eliminado' });
+    const activeOrders = await pool.query(
+      `SELECT 1 FROM pedidos
+       WHERE empresa_id = $1 AND repartidor_id = $2
+         AND estado IN ('asignado', 'en_camino')
+       LIMIT 1`,
+      [req.user.empresa_id, id]
+    );
+    if (activeOrders.rowCount > 0) {
+      return res.status(409).json({
+        error: 'Reasigna los pedidos activos antes de desactivar al repartidor'
+      });
+    }
+    const result = await pool.query(
+      `UPDATE usuarios
+       SET estado = 'inactivo', sesion_version = sesion_version + 1
+       WHERE id = $1 AND empresa_id = $2 AND rol = 'repartidor'
+       RETURNING id`,
+      [id, req.user.empresa_id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Repartidor no encontrado' });
+    }
+    return res.json({ message: 'Repartidor desactivado' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    logger.error('driver_deactivation_failed', { error, driverId: id });
+    return res.status(500).json({ error: 'No fue posible desactivar al repartidor' });
   }
 });
+
+router.post(
+  '/ubicacion/consentimiento',
+  verifyToken,
+  checkRole(['repartidor']),
+  body('aceptado').isBoolean().withMessage('Consentimiento inválido'),
+  handleValidation,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `UPDATE usuarios
+         SET ubicacion_consentida_en = CASE
+           WHEN $1::boolean THEN CURRENT_TIMESTAMP
+           ELSE NULL
+         END
+         WHERE id = $2
+         RETURNING ubicacion_consentida_en`,
+        [req.body.aceptado, req.user.id]
+      );
+      return res.json({
+        aceptado: Boolean(result.rows[0].ubicacion_consentida_en),
+        fecha: result.rows[0].ubicacion_consentida_en
+      });
+    } catch (error) {
+      return res.status(500).json({ error: 'No fue posible guardar el consentimiento' });
+    }
+  }
+);
+
+router.get(
+  '/auditoria',
+  verifyToken,
+  checkRole(['admin']),
+  query('limit').optional().isInt({ min: 1, max: 200 }),
+  handleValidation,
+  async (req, res) => {
+    try {
+      const limit = Number(req.query.limit || 100);
+      const result = await pool.query(
+        `SELECT a.id, a.accion, a.entidad, a.entidad_id,
+                a.detalles, a.direccion_ip, a.creado_en,
+                u.nombre AS usuario_nombre
+         FROM auditoria a
+         LEFT JOIN usuarios u ON u.id = a.usuario_id
+         WHERE a.empresa_id = $1
+         ORDER BY a.creado_en DESC
+         LIMIT $2`,
+        [req.user.empresa_id, limit]
+      );
+      return res.json(result.rows);
+    } catch (error) {
+      return res.status(500).json({ error: 'No fue posible cargar la auditoría' });
+    }
+  }
+);
 
 module.exports = router;

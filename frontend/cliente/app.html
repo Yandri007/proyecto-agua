@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AquaControl - Cliente</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="/assets/inter.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <script src="/vendor/leaflet/leaflet.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/assets/safe-ui.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: #f5f7fa; color: #1a1a2e; }
@@ -62,28 +63,57 @@
         .btn-cerrar-sesion { background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; margin-top: 20px; width: 100%; }
         .text-center { text-align: center; }
         .text-muted { color: #888; }
+        .programaciones-panel { margin-top:30px; padding:20px 0; border-top:1px solid #dce3eb; border-bottom:1px solid #dce3eb; }
+        .programacion-item { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(130px,.7fr) auto; gap:16px; align-items:center; padding:16px 0; border-bottom:1px solid #e5e7eb; }
+        .programacion-item:last-child { border-bottom:0; }
+        .programacion-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+        .programacion-actions button { border:0; border-radius:6px; padding:7px 10px; cursor:pointer; color:white; background:#0f6c8d; }
+        .programacion-actions .danger { background:#b42318; }
+        .programacion-actions .secondary { background:#667085; }
+        .schedule-products { text-align:left; margin:14px 0; }
+        .schedule-product-row { display:grid; grid-template-columns:1fr 90px; gap:12px; align-items:center; padding:8px 0; border-bottom:1px solid #edf0f4; }
+        .schedule-product-row input { width:100%; padding:9px; border:1px solid #cfd8e3; border-radius:6px; }
+        .schedule-field { display:flex; flex-direction:column; gap:5px; text-align:left; margin:10px 0; }
+        .schedule-field label { font-size:12px; font-weight:600; color:#475467; }
+        .schedule-field input, .schedule-field select { padding:11px; border:1px solid #cfd8e3; border-radius:6px; font:inherit; }
+        @media (max-width:760px) { .main-grid { grid-template-columns:1fr; } .programacion-item { grid-template-columns:1fr; } .programacion-actions { justify-content:flex-start; } }
     </style>
+    <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
 </head>
-<body>
+<body class="aq-app aq-client">
     <div class="container">
         <div class="header">
-            <div class="logo">💧 Aqua<span>Control</span></div>
+            <div class="logo"><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> Aqua<span>Control</span></div>
             <div style="display: flex; gap: 15px;">
-                <button class="btn-volver" onclick="window.location.href='/'">← Inicio</button>
-                <div class="user-info">👤 <span id="userName"></span></div>
+                <button class="btn-volver" onclick="window.location.href='/'"><i class="fas fa-arrow-left"></i> Inicio</button>
+                <div class="user-info"><span id="clienteLiveStatus" class="aq-live-status">En línea</span> <i class="fas fa-user"></i> <span id="userName"></span></div>
             </div>
         </div>
 
         <div class="main-grid">
-            <div><h3>🛒 Productos</h3><div id="productos" class="productos-grid"></div></div>
-            <div><div class="carrito-card"><h3>🛍️ Tu Pedido</h3><div id="carrito">Carrito vacío</div></div></div>
+            <div><h3><i class="fas fa-bottle-water"></i> Productos</h3><div id="productos" class="productos-grid"></div></div>
+            <div>
+                <div class="carrito-card">
+                    <h3><i class="fas fa-basket-shopping"></i> Tu pedido</h3>
+                    <label for="direccionEntrega" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Dirección de entrega</label>
+                    <input id="direccionEntrega" type="text" maxlength="300" placeholder="Calle, número y referencia" style="width:100%; padding:12px; border:1px solid #d9e2ec; border-radius:10px; margin-bottom:14px;">
+                    <label for="pedidoMetodoPago" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Método de pago</label>
+                    <select id="pedidoMetodoPago" style="width:100%; padding:12px; border:1px solid #d9e2ec; border-radius:10px; margin-bottom:14px;"><option value="efectivo">Efectivo al recibir</option><option value="transferencia">Transferencia</option></select>
+                    <div id="carrito">Carrito vacío</div>
+                </div>
+            </div>
         </div>
 
         <div id="pedidoActivoDiv" class="mapa-card" style="display:none">
-            <h3>📍 Seguimiento de tu pedido</h3>
+            <h3><i class="fas fa-location-dot"></i> Seguimiento de tu pedido</h3>
             <div id="mapa"></div>
             <div id="estadoPedido" class="estado-pedido"></div>
         </div>
+
+        <section class="programaciones-panel">
+            <div class="pedidos-header"><h3><i class="fas fa-calendar-check"></i> Entregas programadas</h3></div>
+            <div id="programacionesCliente"></div>
+        </section>
 
         <div style="margin-top: 30px;">
             <div class="pedidos-header">
@@ -124,18 +154,39 @@
         </div>
     </div>
 
-    <script>
-        const API = '/api';
-        let token = null, userId = null, carrito = [], socket = null, map = null, markerRepartidor = null, pedidoActivo = null;
-        let pedidoAOcultar = null;
+    <div id="modalComprobante" class="modal"><div class="modal-content">
+        <i class="fas fa-file-signature" style="font-size:48px; color:#0077b6;"></i>
+        <h3 style="margin-top:12px;">Comprobante de entrega</h3>
+        <div id="comprobanteCliente" style="text-align:left; margin-top:14px;"></div>
+        <button class="modal-btn-cancel" onclick="document.getElementById('modalComprobante').style.display='none'">Cerrar</button>
+    </div></div>
 
-        function mostrarToast(mensaje, tipo = 'success') { 
-            const toast = document.createElement('div'); 
-            toast.className = `toast ${tipo === 'error' ? 'error' : tipo === 'warning' ? 'warning' : ''}`; 
-            toast.innerHTML = `<i class="fas ${tipo === 'success' ? 'fa-check-circle' : tipo === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i> ${mensaje}`; 
-            document.body.appendChild(toast); 
-            setTimeout(() => toast.remove(), 3000); 
-        }
+    <div id="modalProgramacion" class="modal"><div class="modal-content" style="max-width:540px; text-align:left; max-height:92vh; overflow:auto;">
+        <h3><i class="fas fa-calendar-plus"></i> <span id="programacionTitulo">Nueva entrega programada</span></h3>
+        <input type="hidden" id="programacionId">
+        <input type="hidden" id="programacionKey">
+        <div class="schedule-field"><label for="programacionFrecuencia">Frecuencia</label><select id="programacionFrecuencia"><option value="semanal">Semanal</option><option value="quincenal">Cada dos semanas</option><option value="mensual">Mensual</option></select></div>
+        <div class="schedule-field"><label for="programacionFecha">Próxima entrega</label><input id="programacionFecha" type="date" required></div>
+        <div class="schedule-field"><label for="programacionDireccion">Dirección</label><input id="programacionDireccion" maxlength="300" required></div>
+        <div class="schedule-field"><label for="programacionMetodoPago">Método de pago</label><select id="programacionMetodoPago"><option value="efectivo">Efectivo al recibir</option><option value="transferencia">Transferencia</option></select></div>
+        <div id="programacionProductos" class="schedule-products"></div>
+        <div class="modal-buttons"><button id="guardarProgramacionButton" class="modal-btn-confirm" style="background:#087ca7;" onclick="guardarProgramacion()"><i class="fas fa-save"></i> Guardar</button><button class="modal-btn-cancel" onclick="cerrarProgramacionModal()">Cancelar</button></div>
+    </div></div>
+
+    <script nonce="{{CSP_NONCE}}">
+        const API = '/api';
+        let token = null, userId = null, carrito = [], catalogoProductos = [], programaciones = [], programacionItems = [], socket = null, map = null, markerRepartidor = null, pedidoActivo = null;
+        let clienteRefreshTimer = null, clienteRefreshInterval = null;
+        let pedidoAOcultar = null;
+        const productImageByType = Object.freeze({
+            bidon: '/assets/products/bidon-20l.jpg',
+            botella: '/assets/products/botella-1l.jpg',
+            galon: '/assets/products/galon-5l.jpg',
+            paca_botellas: '/assets/products/paca-6.jpg'
+        });
+
+        const { escapeHtml, showToast: mostrarToast } = AquaUI;
+        const getProductImage = (type) => productImageByType[type] || '/assets/brand/aquacontrol-mark.svg';
 
         function mostrarModalVaciarHistorial() { document.getElementById('modalVaciarHistorial').style.display = 'flex'; }
         function cerrarModalVaciarHistorial() { document.getElementById('modalVaciarHistorial').style.display = 'none'; }
@@ -143,77 +194,167 @@
         function cerrarModalOcultarPedido() { document.getElementById('modalOcultarPedido').style.display = 'none'; pedidoAOcultar = null; }
 
         async function cargarDatos() {
-            token = localStorage.getItem('token'); 
-            userId = localStorage.getItem('userId');
-            if (!token || !userId) { 
-                window.location.href = '/'; 
-                return; 
+            try {
+                const res = await fetch(`${API}/auth/me`);
+                const data = await res.json();
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) window.location.href = '/';
+                    else throw new Error(data.error || 'No fue posible cargar tu cuenta');
+                    return;
+                }
+                if (data.user?.rol !== 'cliente') {
+                    window.location.href = '/';
+                    return;
+                }
+                token = 'cookie-session';
+                userId = data.user.id;
+                document.getElementById('userName').innerText = data.user.nombre;
+                AquaUI.startSessionGuard('cliente', data.user.id);
+            } catch (error) {
+                mostrarToast('Sin conexión. Reintentaremos automáticamente.', 'error');
+                document.addEventListener('aquacontrol:reconnected', cargarDatos, { once: true });
+                return;
             }
-            document.getElementById('userName').innerText = localStorage.getItem('userName') || 'Usuario';
             conectarWebSocket();
             await cargarProductos();
-            await cargarMisPedidos();
+            await Promise.all([cargarMisPedidos(), cargarProgramaciones()]);
+            if (!clienteRefreshInterval) {
+                clienteRefreshInterval = setInterval(refrescarCliente, 30000);
+            }
+        }
+
+        function refrescarCliente() {
+            if (!token || document.hidden) return;
+            clearTimeout(clienteRefreshTimer);
+            clienteRefreshTimer = setTimeout(() => {
+                Promise.all([cargarProductos(), cargarMisPedidos(), cargarProgramaciones()]);
+            }, 250);
         }
 
         function conectarWebSocket() {
+            if (socket) return;
             socket = io();
-            socket.emit('registrar_usuario', { userId, rol: 'cliente' });
+
+            const liveStatus = document.getElementById('clienteLiveStatus');
+            socket.on('connect', () => {
+                liveStatus.classList.remove('offline');
+                liveStatus.textContent = 'En línea';
+                refrescarCliente();
+            });
+            socket.on('disconnect', () => {
+                liveStatus.classList.add('offline');
+                liveStatus.textContent = 'Reconectando';
+            });
+            socket.on('connect_error', () => {
+                liveStatus.classList.add('offline');
+                liveStatus.textContent = 'Sin conexión';
+            });
             
             socket.on('ubicacion_repartidor', (data) => {
-                console.log('📍 Ubicación recibida del repartidor:', data);
-                if (data.latitud && data.longitud) {
-                    actualizarMapa(data.latitud, data.longitud);
-                    document.getElementById('estadoPedido').innerHTML = '🚚 Tu repartidor está en camino! Llegará pronto.';
-                    mostrarToast('🚚 Tu repartidor está cerca', 'success');
+                if (pedidoActivo && Number(data.pedidoId) === Number(pedidoActivo.id)
+                    && Number.isFinite(Number(data.latitud))
+                    && Number.isFinite(Number(data.longitud))) {
+                    actualizarMapa(Number(data.latitud), Number(data.longitud));
+                    document.getElementById('estadoPedido').innerHTML = '<i class="fas fa-truck-fast"></i> Tu repartidor está en camino. Llegará pronto.';
+                    mostrarToast('Tu repartidor está cerca', 'success');
                 }
             });
             
             socket.on('confirmacion_entrega', (data) => {
-                mostrarToast('✅ Pedido entregado. Confirma la recepción.', 'success');
+                mostrarToast('Pedido entregado. Confirma la recepción.', 'success');
                 cargarMisPedidos();
             });
+
+            socket.on('pedido_actualizado', () => {
+                cargarMisPedidos();
+            });
+
+            socket.on('operacion_actualizada', (data) => {
+                if (['/api/pedidos', '/api/productos', '/api/recurrentes'].includes(data.recurso)) {
+                    refrescarCliente();
+                }
+            });
+            document.addEventListener('aquacontrol:reconnected', refrescarCliente);
         }
 
         function iniciarMapa(lat, lng) { 
             if(!map){ 
+                if (typeof L === 'undefined') {
+                    document.getElementById('estadoPedido').textContent = 'El mapa no pudo cargarse. El estado del pedido sigue disponible.';
+                    return;
+                }
                 map = L.map('mapa').setView([lat, lng], 13); 
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map); 
+                const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    maxZoom: 19
+                }).addTo(map);
+                tiles.on('tileerror', () => {
+                    document.getElementById('estadoPedido').textContent = 'Mapa base temporalmente no disponible. El seguimiento continúa conectado.';
+                });
             } 
         }
         
         function actualizarMapa(lat, lng) { 
             if(!map) iniciarMapa(lat, lng); 
+            if (!map) return;
             if(markerRepartidor) { 
                 markerRepartidor.setLatLng([lat, lng]); 
             } else { 
                 markerRepartidor = L.marker([lat, lng]).addTo(map); 
-                markerRepartidor.bindPopup('🚚 Tu repartidor').openPopup(); 
+                markerRepartidor.bindPopup('Tu repartidor').openPopup();
             } 
             map.setView([lat, lng], 14); 
+            setTimeout(() => map.invalidateSize(), 0);
+        }
+
+        async function cargarUbicacionPedido(pedidoId) {
+            try {
+                const response = await fetch(`${API}/pedidos/${pedidoId}/ubicacion`);
+                if (!response.ok) return;
+                const location = await response.json();
+                actualizarMapa(Number(location.latitud), Number(location.longitud));
+            } catch (error) {
+                // El WebSocket actualizará el mapa cuando vuelva la conexión.
+            }
         }
 
         async function cargarProductos() {
             try {
-                const res = await fetch(`${API}/productos`);
-                const productos = await res.json();
-                document.getElementById('productos').innerHTML = productos.map(p => `
+                catalogoProductos = await AquaUI.requestJson(`${API}/productos`);
+                document.getElementById('productos').innerHTML = catalogoProductos.map(p => `
                     <div class="producto-card">
-                        <div class="producto-icono">💧</div>
-                        <div class="producto-nombre">${p.nombre}</div>
+                        <div class="producto-media">
+                            <img src="${getProductImage(p.tipo)}" alt="${escapeHtml(p.nombre)}" width="720" height="720" loading="lazy">
+                        </div>
+                        <div class="producto-nombre">${escapeHtml(p.nombre)}</div>
                         <div class="producto-precio">$${p.precio}</div>
-                        <button class="btn-agregar" onclick="agregarAlCarrito(${p.id}, '${p.nombre}', ${p.precio})">Agregar</button>
+                        <button class="btn-agregar" onclick="agregarAlCarrito(${p.id})"><i class="fas fa-plus"></i> Agregar</button>
                     </div>
                 `).join('');
             } catch (error) {
                 console.error('Error cargando productos:', error);
-                mostrarToast('Error cargando productos', 'error');
+                document.getElementById('productos').innerHTML = `<div class="aq-load-error"><i class="fas fa-cloud-arrow-down"></i><strong>No pudimos cargar los productos</strong><span>${escapeHtml(error.message)}</span><button class="btn-agregar" onclick="cargarProductos()">Reintentar</button></div>`;
             }
         }
 
-        function agregarAlCarrito(id, nombre, precio) { 
-            carrito.push({ producto_id: id, nombre, precio, cantidad: 1 }); 
+        function agregarAlCarrito(id) {
+            const product = catalogoProductos.find(item => item.id === id);
+            if (!product) return;
+            const existing = carrito.find(item => item.producto_id === id);
+            if (existing) {
+                existing.cantidad += 1;
+            } else {
+                carrito.push({
+                    producto_id: product.id,
+                    nombre: product.nombre,
+                    precio: Number(product.precio),
+                    es_retornable: Boolean(product.es_retornable),
+                    deposito_envase: Number(product.deposito_envase || 0),
+                    cantidad: 1
+                });
+            }
             actualizarCarrito(); 
-            mostrarToast(`${nombre} agregado al carrito`, 'success'); 
+            mostrarToast(`${product.nombre} agregado al carrito`, 'success');
         }
         
         function eliminarDelCarrito(i) { 
@@ -228,14 +369,143 @@
                 return; 
             }
             let total = 0;
+            const hasReturnables = carrito.some(item => item.es_retornable);
             div.innerHTML = carrito.map((item,i) => { 
-                total += item.precio; 
+                total += Number(item.precio) * Number(item.cantidad);
                 return `<div class="carrito-item">
-                            <span>${item.nombre}</span>
-                            <span>$${item.precio}</span>
-                            <button style="background:none; border:none; color:#e74c3c; cursor:pointer;" onclick="eliminarDelCarrito(${i})">❌</button>
+                            <span>${escapeHtml(item.nombre)} × ${item.cantidad}</span>
+                            <span>$${(Number(item.precio) * Number(item.cantidad)).toFixed(2)}</span>
+                            <button class="btn-quitar-carrito" onclick="eliminarDelCarrito(${i})" title="Quitar producto" aria-label="Quitar ${escapeHtml(item.nombre)}"><i class="fas fa-xmark"></i></button>
                         </div>`; 
-            }).join('') + `<div class="total">Total: $${total}</div><button class="btn-pedido" onclick="realizarPedido()">✅ Confirmar Pedido</button>`;
+            }).join('') + `<div class="total">Subtotal: $${total.toFixed(2)}</div>${hasReturnables ? '<p class="text-muted" style="margin:8px 0;">El depósito se calcula al entregar, según los envases devueltos.</p>' : ''}<button class="btn-pedido" onclick="realizarPedido()"><i class="fas fa-check"></i> Confirmar pedido</button><button class="btn-repetir" style="width:100%; margin-top:8px; padding:11px; border-radius:6px;" onclick="abrirProgramacionDesdeCarrito()"><i class="fas fa-calendar-plus"></i> Programar entregas</button>`;
+        }
+
+        const fechaLocal = (dias = 0) => {
+            const date = new Date();
+            date.setDate(date.getDate() + dias);
+            return date.toLocaleDateString('en-CA');
+        };
+
+        function renderProductosProgramacion() {
+            document.getElementById('programacionProductos').innerHTML = programacionItems.map(item => `
+                <div class="schedule-product-row"><span>${escapeHtml(item.nombre)}</span><input type="number" min="1" max="1000" value="${item.cantidad}" data-programacion-producto="${item.producto_id}" aria-label="Cantidad de ${escapeHtml(item.nombre)}"></div>`
+            ).join('');
+        }
+
+        function abrirProgramacionDesdeCarrito() {
+            const address = document.getElementById('direccionEntrega').value.trim();
+            if (!carrito.length || address.length < 3) {
+                mostrarToast('Selecciona productos y escribe la dirección', 'error');
+                return;
+            }
+            programacionItems = carrito.map(item => ({ ...item }));
+            document.getElementById('programacionId').value = '';
+            document.getElementById('programacionKey').value = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            document.getElementById('programacionTitulo').textContent = 'Nueva entrega programada';
+            document.getElementById('programacionFrecuencia').value = 'semanal';
+            document.getElementById('programacionFecha').min = fechaLocal();
+            document.getElementById('programacionFecha').value = fechaLocal(1);
+            document.getElementById('programacionDireccion').value = address;
+            document.getElementById('programacionMetodoPago').value = document.getElementById('pedidoMetodoPago').value;
+            renderProductosProgramacion();
+            document.getElementById('modalProgramacion').style.display = 'flex';
+        }
+
+        function editarProgramacion(id) {
+            const schedule = programaciones.find(item => Number(item.id) === Number(id));
+            if (!schedule || schedule.estado === 'cancelado') return;
+            programacionItems = (schedule.productos || []).map(item => ({
+                producto_id: item.producto_id, nombre: item.nombre, cantidad: Number(item.cantidad)
+            }));
+            document.getElementById('programacionId').value = schedule.id;
+            document.getElementById('programacionKey').value = '';
+            document.getElementById('programacionTitulo').textContent = 'Editar entrega programada';
+            document.getElementById('programacionFrecuencia').value = schedule.frecuencia;
+            document.getElementById('programacionFecha').min = fechaLocal();
+            document.getElementById('programacionFecha').value = String(schedule.proxima_entrega).slice(0, 10) < fechaLocal() ? fechaLocal() : String(schedule.proxima_entrega).slice(0, 10);
+            document.getElementById('programacionDireccion').value = schedule.direccion_entrega;
+            document.getElementById('programacionMetodoPago').value = schedule.metodo_pago || 'efectivo';
+            renderProductosProgramacion();
+            document.getElementById('modalProgramacion').style.display = 'flex';
+        }
+
+        function cerrarProgramacionModal() {
+            document.getElementById('modalProgramacion').style.display = 'none';
+            programacionItems = [];
+        }
+
+        async function guardarProgramacion() {
+            const products = [...document.querySelectorAll('[data-programacion-producto]')].map(input => ({
+                producto_id: Number(input.dataset.programacionProducto), cantidad: Number(input.value)
+            }));
+            const id = document.getElementById('programacionId').value;
+            const body = {
+                frecuencia: document.getElementById('programacionFrecuencia').value,
+                proxima_entrega: document.getElementById('programacionFecha').value,
+                direccion_entrega: document.getElementById('programacionDireccion').value.trim(),
+                metodo_pago: document.getElementById('programacionMetodoPago').value,
+                latitud_entrega: null,
+                longitud_entrega: null,
+                productos: products,
+                ...(!id ? { idempotency_key: document.getElementById('programacionKey').value } : {})
+            };
+            const button = document.getElementById('guardarProgramacionButton');
+            button.disabled = true;
+            try {
+                const response = await fetch(id ? `${API}/recurrentes/${id}` : `${API}/recurrentes`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'No fue posible guardar la programación');
+                cerrarProgramacionModal();
+                if (!id) {
+                    carrito = [];
+                    actualizarCarrito();
+                }
+                mostrarToast(id ? 'Programación actualizada' : 'Entregas programadas', 'success');
+                await Promise.all([cargarProgramaciones(), cargarMisPedidos(), cargarProductos()]);
+            } catch (error) { mostrarToast(error.message, 'error'); }
+            finally { button.disabled = false; }
+        }
+
+        async function cargarProgramaciones() {
+            try {
+                const response = await fetch(`${API}/recurrentes/mis-programaciones`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'No fue posible cargar las programaciones');
+                programaciones = data;
+                const labels = { semanal: 'Semanal', quincenal: 'Cada dos semanas', mensual: 'Mensual' };
+                document.getElementById('programacionesCliente').innerHTML = data.length ? data.map(schedule => `
+                    <div class="programacion-item">
+                        <div><strong>${(schedule.productos || []).map(item => `${Number(item.cantidad)} × ${escapeHtml(item.nombre)}`).join(' · ')}</strong><div class="text-muted">${escapeHtml(schedule.direccion_entrega)}</div>${schedule.ultimo_error ? `<div style="color:#b42318; margin-top:5px;"><i class="fas fa-triangle-exclamation"></i> ${escapeHtml(schedule.ultimo_error)}</div>` : ''}</div>
+                        <div><span class="badge ${schedule.estado === 'activo' ? 'badge-entregado' : schedule.estado === 'pausado' ? 'badge-pendiente' : 'badge-cancelado'}">${escapeHtml(schedule.estado)}</span><div style="margin-top:6px;">${labels[schedule.frecuencia]}</div><div class="text-muted">Próxima: ${new Date(`${String(schedule.proxima_entrega).slice(0,10)}T12:00:00`).toLocaleDateString()}</div></div>
+                        <div class="programacion-actions">${schedule.estado !== 'cancelado' ? `<button onclick="editarProgramacion(${schedule.id})" title="Editar"><i class="fas fa-pen"></i></button>${schedule.estado === 'activo' ? `<button class="secondary" onclick="cambiarEstadoProgramacion(${schedule.id}, 'pausar')"><i class="fas fa-pause"></i> Pausar</button><button class="secondary" onclick="cambiarEstadoProgramacion(${schedule.id}, 'omitir')"><i class="fas fa-forward"></i> Omitir</button>` : `<button onclick="cambiarEstadoProgramacion(${schedule.id}, 'reanudar')"><i class="fas fa-play"></i> Reanudar</button>`}<button class="danger" onclick="cambiarEstadoProgramacion(${schedule.id}, 'cancelar')"><i class="fas fa-ban"></i> Cancelar</button>` : ''}</div>
+                    </div>`).join('') : '<p class="text-muted">No tienes entregas programadas.</p>';
+            } catch (error) {
+                document.getElementById('programacionesCliente').innerHTML = `<p style="color:#b42318;">${escapeHtml(error.message)}</p>`;
+            }
+        }
+
+        async function cambiarEstadoProgramacion(id, action) {
+            const schedule = programaciones.find(item => Number(item.id) === Number(id));
+            if (!schedule) return;
+            if ((action === 'cancelar' || action === 'omitir') && !confirm(`¿Confirmas ${action === 'cancelar' ? 'cancelar la programación' : 'omitir la próxima entrega'}?`)) return;
+            const body = { accion: action };
+            if (action === 'reanudar') {
+                const scheduledDate = String(schedule.proxima_entrega).slice(0, 10);
+                body.proxima_entrega = scheduledDate < fechaLocal() ? fechaLocal() : scheduledDate;
+            }
+            try {
+                const response = await fetch(`${API}/recurrentes/${id}/estado`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'No fue posible cambiar la programación');
+                mostrarToast('Programación actualizada', 'success');
+                await Promise.all([cargarProgramaciones(), cargarMisPedidos()]);
+            } catch (error) { mostrarToast(error.message, 'error'); }
         }
 
         async function realizarPedido() {
@@ -251,53 +521,49 @@
                 btnPedido.disabled = true;
             }
             
-            let lat = -0.180653, lng = -78.467838;
+            const direccion = document.getElementById('direccionEntrega').value.trim();
+            if (direccion.length < 3) {
+                mostrarToast('Escribe una dirección de entrega válida', 'error');
+                if(btnPedido) {
+                    btnPedido.innerHTML = textoOriginal;
+                    btnPedido.disabled = false;
+                }
+                return;
+            }
+
+            let lat = null, lng = null;
             if(navigator.geolocation) {
                 await new Promise(r => navigator.geolocation.getCurrentPosition(p => {
                     lat = p.coords.latitude; 
                     lng = p.coords.longitude; 
                     r();
-                }, () => r()));
+                }, () => r(), { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }));
             }
             
             const pedidoData = {
-                productos: carrito.map(i => ({ producto_id: i.producto_id, cantidad: 1 })),
-                direccion_entrega: 'Mi dirección',
+                productos: carrito.map(i => ({
+                    producto_id: i.producto_id,
+                    cantidad: i.cantidad
+                })),
+                direccion_entrega: direccion,
+                metodo_pago: document.getElementById('pedidoMetodoPago').value,
                 latitud_entrega: lat,
                 longitud_entrega: lng
             };
             
             try {
-                const res = await fetch(`${API}/pedidos`, { 
+                await AquaUI.requestJson(`${API}/pedidos`, {
                     method: 'POST', 
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(pedidoData) 
                 });
-                
-                if(res.ok){ 
-                    const pedido = await res.json();
-                    carrito = []; 
-                    actualizarCarrito(); 
-                    
-                    if(socket) {
-                        socket.emit('nuevo_pedido', { 
-                            pedido_id: pedido.id, 
-                            cliente: localStorage.getItem('userName') || 'Cliente', 
-                            total: pedido.total 
-                        });
-                    }
-                    
-                    document.getElementById('modalPedido').style.display = 'flex';
-                    cargarMisPedidos(); 
-                } else { 
-                    const err = await res.json();
-                    mostrarToast(err.error || 'Error al realizar pedido', 'error');
-                }
+                carrito = [];
+                actualizarCarrito();
+                document.getElementById('direccionEntrega').value = '';
+                document.getElementById('modalPedido').style.display = 'flex';
+                await cargarMisPedidos();
             } catch (error) {
-                mostrarToast('Error de conexión', 'error');
+                mostrarToast(error.message || 'No fue posible realizar el pedido', 'error');
             } finally {
                 if(btnPedido) {
                     btnPedido.innerHTML = textoOriginal;
@@ -315,10 +581,7 @@
             try {
                 const res = await fetch(`${API}/pedidos/cliente/vaciar-historial`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 if (res.ok) {
                     mostrarToast('Historial vaciado correctamente', 'success');
@@ -339,10 +602,7 @@
             try {
                 const res = await fetch(`${API}/pedidos/cliente/ocultar/${pedidoAOcultar}`, {
                     method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 if (res.ok) {
                     mostrarToast('Pedido ocultado del historial', 'success');
@@ -361,17 +621,18 @@
             if (!token) return;
             
             try {
-                const res = await fetch(`${API}/pedidos/mis-pedidos`, { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                });
-                const pedidos = await res.json();
+                const pedidos = await AquaUI.requestJson(`${API}/pedidos/mis-pedidos`);
                 
-                const pendiente = pedidos.find(p => p.estado === 'pendiente' || p.estado === 'en_camino');
+                const pendiente = pedidos.find(p => ['pendiente', 'asignado', 'en_camino'].includes(p.estado));
                 if(pendiente && pendiente.estado !== 'entregado' && pendiente.estado !== 'cancelado'){ 
                     document.getElementById('pedidoActivoDiv').style.display = 'block'; 
                     pedidoActivo = pendiente; 
-                    iniciarMapa(-0.180653, -78.467838);
-                    document.getElementById('estadoPedido').innerHTML = '⏳ Esperando que un repartidor tome tu pedido...';
+                    document.getElementById('estadoPedido').innerHTML = pendiente.estado === 'pendiente'
+                        ? '<i class="fas fa-clock"></i> Esperando que un repartidor tome tu pedido...'
+                        : '<i class="fas fa-truck-fast"></i> Tu pedido fue asignado y está en proceso de entrega.';
+                    if (pendiente.estado !== 'pendiente') {
+                        cargarUbicacionPedido(pendiente.id);
+                    }
                 } else {
                     document.getElementById('pedidoActivoDiv').style.display = 'none'; 
                 }
@@ -385,10 +646,11 @@
                     let estadoTexto = '';
                     let estadoClass = '';
                     switch(p.estado) {
-                        case 'pendiente': estadoTexto = '⏳ Pendiente'; estadoClass = 'badge-pendiente'; break;
-                        case 'en_camino': estadoTexto = '🚚 En camino'; estadoClass = 'badge-camino'; break;
-                        case 'entregado': estadoTexto = '✅ Entregado'; estadoClass = 'badge-entregado'; break;
-                        case 'cancelado': estadoTexto = '❌ Cancelado'; estadoClass = 'badge-cancelado'; break;
+                        case 'pendiente': estadoTexto = '<i class="fas fa-clock"></i> Pendiente'; estadoClass = 'badge-pendiente'; break;
+                        case 'asignado': estadoTexto = '<i class="fas fa-box"></i> Asignado'; estadoClass = 'badge-camino'; break;
+                        case 'en_camino': estadoTexto = '<i class="fas fa-truck-fast"></i> En camino'; estadoClass = 'badge-camino'; break;
+                        case 'entregado': estadoTexto = '<i class="fas fa-check"></i> Entregado'; estadoClass = 'badge-entregado'; break;
+                        case 'cancelado': estadoTexto = '<i class="fas fa-xmark"></i> Cancelado'; estadoClass = 'badge-cancelado'; break;
                         default: estadoTexto = p.estado; estadoClass = '';
                     }
                     
@@ -398,13 +660,16 @@
                                 <strong>Pedido #${p.id}</strong>
                                 <span class="badge ${estadoClass}">${estadoTexto}</span>
                             </div>
-                            <div>Total: $${p.total}</div>
+                            <div>Total: $${Number(p.total).toFixed(2)} · ${p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</div>
+                            ${Number(p.deposito_envases || 0) > 0 ? `<div class="text-muted">Incluye depósito de envases: $${Number(p.deposito_envases).toFixed(2)}</div>` : ''}
                             <div>Fecha: ${new Date(p.created_at).toLocaleString()}</div>
+                            ${p.pedido_recurrente_id ? `<div class="text-muted"><i class="fas fa-rotate"></i> Entrega programada para ${new Date(`${String(p.fecha_programada).slice(0,10)}T12:00:00`).toLocaleDateString()}</div>` : ''}
                             <div class="acciones-pedido">
-                                ${p.estado === 'pendiente' ? `<button class="btn-cancelar" onclick="cancelarPedido(${p.id})">❌ Cancelar</button>` : ''}
-                                ${p.estado === 'entregado' && !p.confirmado ? `<button class="btn-confirmar" onclick="confirmarRecepcion(${p.id})">✅ Confirmar</button>` : ''}
+                                ${p.estado === 'pendiente' ? `<button class="btn-cancelar" onclick="cancelarPedido(${p.id})"><i class="fas fa-xmark"></i> Cancelar</button>` : ''}
+                                ${p.estado === 'entregado' && !p.confirmado ? `<button class="btn-confirmar" onclick="confirmarRecepcion(${p.id})"><i class="fas fa-check"></i> Confirmar</button>` : ''}
+                                ${p.tiene_comprobante ? `<button class="btn-repetir" onclick="verComprobante(${p.id})"><i class="fas fa-file-signature"></i> Comprobante</button>` : ''}
                                 ${(p.estado === 'entregado' || p.estado === 'cancelado') ? `<button class="btn-ocultar" onclick="mostrarModalOcultarPedido(${p.id})" title="Ocultar del historial"><i class="fas fa-trash-alt"></i></button>` : ''}
-                                <button class="btn-repetir" onclick="repetirPedido(${p.id})">🔄 Repetir</button>
+                                <button class="btn-repetir" onclick="repetirPedido(${p.id})"><i class="fas fa-rotate"></i> Repetir</button>
                             </div>
                         </div>
                     `;
@@ -417,10 +682,7 @@
 
         async function repetirPedido(pedidoId) {
             try {
-                const res = await fetch(`${API}/pedidos/mis-pedidos`, { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                });
-                const pedidos = await res.json();
+                const pedidos = await AquaUI.requestJson(`${API}/pedidos/mis-pedidos`);
                 const pedido = pedidos.find(p => p.id === pedidoId);
                 
                 if (pedido && pedido.productos) {
@@ -428,8 +690,10 @@
                     carrito = productosPedido.map(prod => ({
                         producto_id: prod.producto_id,
                         nombre: prod.nombre || `Producto ${prod.producto_id}`,
-                        precio: prod.precio_unitario || prod.precio,
-                        cantidad: 1
+                        precio: Number(prod.precio_unitario || prod.precio),
+                        es_retornable: Boolean(prod.es_retornable),
+                        deposito_envase: Number(prod.deposito_unitario || 0),
+                        cantidad: Number(prod.cantidad) || 1
                     }));
                     actualizarCarrito();
                     mostrarToast('Productos agregados al carrito', 'success');
@@ -443,14 +707,16 @@
 
         async function confirmarRecepcion(pedidoId) {
             try {
-                await fetch(`${API}/pedidos/${pedidoId}/confirmar`, { 
+                const res = await fetch(`${API}/pedidos/${pedidoId}/confirmar`, {
                     method: 'PUT', 
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ confirmado: true }) 
                 });
+                const data = await res.json();
+                if (!res.ok) {
+                    mostrarToast(data.error || 'No fue posible confirmar', 'error');
+                    return;
+                }
                 mostrarToast('Gracias por confirmar la recepción', 'success');
                 cargarMisPedidos();
             } catch (error) {
@@ -461,14 +727,16 @@
         async function cancelarPedido(pedidoId) { 
             if(!confirm('¿Cancelar pedido?')) return; 
             try {
-                await fetch(`${API}/pedidos/${pedidoId}/estado`, { 
+                const res = await fetch(`${API}/pedidos/${pedidoId}/estado`, {
                     method: 'PUT', 
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ estado: 'cancelado' }) 
                 });
+                const data = await res.json();
+                if (!res.ok) {
+                    mostrarToast(data.error || 'No fue posible cancelar el pedido', 'error');
+                    return;
+                }
                 mostrarToast('Pedido cancelado', 'success');
                 cargarMisPedidos();
             } catch (error) {
@@ -476,9 +744,27 @@
             }
         }
 
-        function logout() { 
-            localStorage.clear(); 
+        async function logout() {
+            await fetch(`${API}/auth/logout`, { method: 'POST' });
+            sessionStorage.removeItem('aquacontrol_user');
             window.location.href = '/'; 
+        }
+
+        async function verComprobante(pedidoId) {
+            try {
+                const res = await fetch(`${API}/logistica/comprobantes/${pedidoId}`);
+                const proof = await res.json();
+                if (!res.ok) throw new Error(proof.error || 'No fue posible cargar el comprobante');
+                document.getElementById('comprobanteCliente').innerHTML = `
+                    <p><strong>Pedido #${proof.pedido_id}</strong></p>
+                    <p>Recibió: ${escapeHtml(proof.receptor_nombre)}</p>
+                    <p>${new Date(proof.creado_en).toLocaleString()}</p>
+                    <p>Productos: $${Number(proof.subtotal_productos).toFixed(2)} · Depósito: $${Number(proof.deposito_envases).toFixed(2)}</p>
+                    <p><strong>Total: $${Number(proof.total).toFixed(2)}</strong> · ${proof.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</p>
+                    ${proof.observaciones ? `<p>${escapeHtml(proof.observaciones)}</p>` : ''}
+                    <img src="${proof.firma_data}" alt="Firma de recepción" style="width:100%; max-height:180px; object-fit:contain; border:1px solid #d8dee8; margin-top:10px;">`;
+                document.getElementById('modalComprobante').style.display = 'flex';
+            } catch (error) { mostrarToast(error.message, 'error'); }
         }
         
         cargarDatos();

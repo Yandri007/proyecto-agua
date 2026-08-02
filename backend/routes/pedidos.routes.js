@@ -1,361 +1,706 @@
 const express = require('express');
-const router = express.Router();
 const pool = require('../config/database');
 const { verifyToken, checkRole } = require('../middleware/auth');
+const { getPlan, requireActiveSubscription } = require('../utils/plans');
+const { getCompanyModules } = require('../utils/modules');
 
-// Middleware para verificar token local (por compatibilidad)
-const verifyTokenLocal = (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Acceso denegado' });
-  try {
-    const jwt = require('jsonwebtoken');
-    const verified = jwt.verify(token, process.env.JWT_SECRET || 'secreto_super_seguro');
-    req.user = verified;
-    next();
-  } catch (error) {
-    res.status(400).json({ error: 'Token inválido' });
-  }
+const router = express.Router();
+const ORDER_PAYMENT_METHODS = new Set(['efectivo', 'transferencia']);
+
+const isPositiveId = (value) => Number.isInteger(Number(value)) && Number(value) > 0;
+const isSafeText = (value, min, max) => (
+  typeof value === 'string'
+  && value.trim().length >= min
+  && value.trim().length <= max
+  && !/[<>]/.test(value)
+);
+
+const emitToAdmins = (req, empresaId, event, payload) => {
+  const io = req.app.get('io');
+  if (io) io.to(`empresa:${empresaId}:admins`).emit(event, payload);
 };
 
-const verify = verifyTokenLocal;
+const emitToUser = (req, userId, event, payload) => {
+  const io = req.app.get('io');
+  if (io) io.to(`user:${userId}`).emit(event, payload);
+};
 
-// ============ CLIENTE - CREAR PEDIDO (CON TRANSACCIÓN) ============
-router.post('/', verify, async (req, res) => {
+router.use(verifyToken);
+router.use(requireActiveSubscription);
+
+router.post('/', checkRole(['cliente']), async (req, res) => {
+  const {
+    productos,
+    direccion_entrega,
+    latitud_entrega,
+    longitud_entrega,
+    metodo_pago: paymentMethod = 'efectivo'
+  } = req.body;
+
+  if (!Array.isArray(productos) || productos.length === 0 || productos.length > 50) {
+    return res.status(400).json({ error: 'El pedido debe incluir entre 1 y 50 productos' });
+  }
+  if (!isSafeText(direccion_entrega, 3, 300)) {
+    return res.status(400).json({ error: 'Dirección de entrega inválida' });
+  }
+  if (!ORDER_PAYMENT_METHODS.has(paymentMethod)) {
+    return res.status(400).json({ error: 'Método de pago inválido' });
+  }
+
+  const hasCoordinates = latitud_entrega !== null
+    && latitud_entrega !== undefined
+    && longitud_entrega !== null
+    && longitud_entrega !== undefined;
+  const latitude = hasCoordinates ? Number(latitud_entrega) : null;
+  const longitude = hasCoordinates ? Number(longitud_entrega) : null;
+  if (hasCoordinates && (
+    !Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+  )) {
+    return res.status(400).json({ error: 'Ubicación de entrega inválida' });
+  }
+
+  const quantities = new Map();
+  for (const item of productos) {
+    const productId = Number(item.producto_id);
+    const quantity = Number(item.cantidad);
+    if (!Number.isInteger(productId) || productId <= 0
+        || !Number.isInteger(quantity) || quantity <= 0 || quantity > 1000) {
+      return res.status(400).json({ error: 'Producto o cantidad inválida' });
+    }
+    quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+  }
+
+  const effectivePlan = req.user.empresa_plan === 'prueba'
+    ? getPlan('profesional')
+    : getPlan(req.user.empresa_plan);
+  if (effectivePlan.limits.monthlyOrders !== null) {
+    const usageResult = await pool.query(
+      `SELECT COUNT(*)::INT AS total
+       FROM pedidos
+       WHERE empresa_id = $1
+         AND created_at >= date_trunc('month', CURRENT_TIMESTAMP)`,
+      [req.user.empresa_id]
+    );
+    if (usageResult.rows[0].total >= effectivePlan.limits.monthlyOrders) {
+      return res.status(409).json({
+        error: 'La empresa alcanzó el límite mensual de pedidos de su plan',
+        code: 'PLAN_LIMIT_REACHED'
+      });
+    }
+  }
+
   const client = await pool.connect();
-  
   try {
     await client.query('BEGIN');
-    
-    const { productos, direccion_entrega, latitud_entrega, longitud_entrega } = req.body;
-    const cliente_id = req.user.id;
-
-    // Verificar stock suficiente
-    for (const item of productos) {
-      const productoStock = await client.query('SELECT stock FROM productos WHERE id = $1', [item.producto_id]);
-      if (productoStock.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: `Producto ${item.producto_id} no existe` });
-      }
-      if (productoStock.rows[0].stock < item.cantidad) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: `Stock insuficiente para el producto. Disponible: ${productoStock.rows[0].stock}` });
-      }
-    }
-
-    // Calcular total
-    let total = 0;
-    for (const item of productos) {
-      const producto = await client.query('SELECT precio FROM productos WHERE id = $1', [item.producto_id]);
-      if (producto.rows.length === 0) continue;
-      total += producto.rows[0].precio * item.cantidad;
-    }
-
-    // Crear pedido
-    const pedidoResult = await client.query(
-      'INSERT INTO pedidos (cliente_id, total, direccion_entrega, latitud_entrega, longitud_entrega, estado) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [cliente_id, total, direccion_entrega, latitud_entrega, longitud_entrega, 'pendiente']
+    const ids = [...quantities.keys()];
+    const productsResult = await client.query(
+      `SELECT id, nombre, precio, stock, es_retornable, deposito_envase
+       FROM productos
+       WHERE empresa_id = $1 AND activo = TRUE AND id = ANY($2::int[])
+       FOR UPDATE`,
+      [req.user.empresa_id, ids]
     );
 
-    const pedido = pedidoResult.rows[0];
+    if (productsResult.rowCount !== ids.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Uno de los productos ya no está disponible' });
+    }
 
-    // Insertar detalles y actualizar stock
-    for (const item of productos) {
-      const producto = await client.query('SELECT precio FROM productos WHERE id = $1', [item.producto_id]);
-      if (producto.rows.length === 0) continue;
+    let total = 0;
+    for (const product of productsResult.rows) {
+      const quantity = quantities.get(product.id);
+      if (product.stock < quantity) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `Stock insuficiente para ${product.nombre}. Disponible: ${product.stock}`
+        });
+      }
+      total += Number(product.precio) * quantity;
+    }
+    total = Number(total.toFixed(2));
+
+    const orderResult = await client.query(
+      `INSERT INTO pedidos
+        (empresa_id, cliente_id, total, subtotal_productos, deposito_envases,
+         metodo_pago, direccion_entrega, latitud_entrega, longitud_entrega, estado)
+       VALUES ($1, $2, $3, $3, 0, $4, $5, $6, $7, 'pendiente')
+       RETURNING *`,
+      [
+        req.user.empresa_id,
+        req.user.id,
+        total,
+        paymentMethod,
+        direccion_entrega.trim(),
+        latitude,
+        longitude
+      ]
+    );
+    const order = orderResult.rows[0];
+
+    for (const product of productsResult.rows) {
+      const quantity = quantities.get(product.id);
       await client.query(
-        'INSERT INTO detalle_pedidos (pedido_id, producto_id, cantidad, precio_unitario) VALUES ($1, $2, $3, $4)',
-        [pedido.id, item.producto_id, item.cantidad, producto.rows[0].precio]
+        `INSERT INTO detalle_pedidos
+          (pedido_id, producto_id, cantidad, precio_unitario, es_retornable, deposito_unitario)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [order.id, product.id, quantity, product.precio,
+          product.es_retornable, product.es_retornable ? product.deposito_envase : 0]
       );
-      await client.query('UPDATE productos SET stock = stock - $1 WHERE id = $2', [item.cantidad, item.producto_id]);
+      await client.query(
+        `UPDATE productos
+         SET stock = stock - $1
+         WHERE id = $2 AND empresa_id = $3`,
+        [quantity, product.id, req.user.empresa_id]
+      );
     }
 
     await client.query('COMMIT');
-
-    // Notificar a admin via socket
-    const io = req.app.get('io');
-    if (io) {
-      const clienteResult = await pool.query('SELECT nombre FROM usuarios WHERE id = $1', [cliente_id]);
-      const clienteNombre = clienteResult.rows[0]?.nombre || 'Cliente';
-      io.emit('nuevo_pedido', { pedido_id: pedido.id, cliente: clienteNombre, total: total });
-    }
-
-    res.status(201).json(pedido);
+    emitToAdmins(req, req.user.empresa_id, 'pedido_recibido', {
+      pedido_id: order.id,
+      cliente: req.user.nombre,
+      total: order.total
+    });
+    return res.status(201).json(order);
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error(error);
-    res.status(500).json({ error: error.message });
+    console.error('Error creando pedido:', error);
+    return res.status(500).json({ error: 'No fue posible crear el pedido' });
   } finally {
     client.release();
   }
 });
 
-// ============ CLIENTE - MIS PEDIDOS ============
-router.get('/mis-pedidos', verify, async (req, res) => {
-  try {
-    const pedidos = await pool.query(
-      `SELECT p.* FROM pedidos p 
-       WHERE p.cliente_id = $1 AND p.oculto_para_cliente = false 
-       ORDER BY p.created_at DESC`,
-      [req.user.id]
-    );
-    res.json(pedidos.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============ ADMIN - TODOS LOS PEDIDOS ============
-router.get('/admin/todos', verify, async (req, res) => {
-  try {
-    if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
-    const pedidos = await pool.query(
-      `SELECT p.*, u.nombre as cliente_nombre FROM pedidos p LEFT JOIN usuarios u ON p.cliente_id = u.id WHERE p.estado != 'cancelado' ORDER BY p.created_at DESC`
-    );
-    res.json(pedidos.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============ REPARTIDOR - PEDIDOS ASIGNADOS ============
-router.get('/repartidor/:repartidorId', async (req, res) => {
-  try {
-    const { repartidorId } = req.params;
-    const result = await pool.query(
-      `SELECT p.*, u.nombre as cliente_nombre, u.telefono as cliente_telefono 
-      FROM pedidos p
-      LEFT JOIN usuarios u ON p.cliente_id = u.id
-      WHERE p.repartidor_id = $1 AND p.estado != 'entregado' AND p.estado != 'cancelado'
-      ORDER BY p.created_at DESC`,
-      [repartidorId]
-    );
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ============ ACTUALIZACIÓN ============
-router.put('/:id/estado', verify, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { estado } = req.body;
-    await pool.query('UPDATE pedidos SET estado = $1 WHERE id = $2', [estado, id]);
-    res.json({ message: 'Estado actualizado' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.put('/:id/asignar', verify, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { repartidor_id } = req.body;
-    await pool.query('UPDATE pedidos SET repartidor_id = $1 WHERE id = $2', [repartidor_id, id]);
-    res.json({ message: 'Repartidor asignado' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.put('/:id/confirmar', async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query('UPDATE pedidos SET confirmado = true WHERE id = $1', [id]);
-
-    // Notificar a admin
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('pedido_confirmado', { pedidoId: id });
-    }
-
-    res.json({ message: 'Confirmado' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.put('/:id/cancelar', async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("UPDATE pedidos SET estado = 'cancelado' WHERE id = $1", [id]);
-
-    // Notificar a admin
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('pedido_cancelado', { pedidoId: id });
-    }
-
-    res.json({ message: 'Pedido cancelado' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Reporte productos más vendidos
-router.get('/reporte/productos', async (req, res) => {
+router.get('/mis-pedidos', checkRole(['cliente']), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT p.nombre, SUM(dp.cantidad) as total_vendido
+      `SELECT p.*, EXISTS (SELECT 1 FROM comprobantes_entrega ce WHERE ce.pedido_id = p.id) AS tiene_comprobante,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'producto_id', pr.id,
+                    'nombre', pr.nombre,
+                    'cantidad', dp.cantidad,
+                    'precio_unitario', dp.precio_unitario,
+                    'es_retornable', dp.es_retornable,
+                    'deposito_unitario', dp.deposito_unitario
+                  ) ORDER BY dp.id
+                ) FILTER (WHERE dp.id IS NOT NULL),
+                '[]'::json
+              ) AS productos
+       FROM pedidos p
+       LEFT JOIN detalle_pedidos dp ON dp.pedido_id = p.id
+       LEFT JOIN productos pr ON pr.id = dp.producto_id
+       WHERE p.empresa_id = $1
+         AND p.cliente_id = $2
+         AND p.oculto_para_cliente = FALSE
+       GROUP BY p.id
+       ORDER BY p.created_at DESC
+       LIMIT 100`,
+      [req.user.empresa_id, req.user.id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error cargando pedidos del cliente:', error);
+    return res.status(500).json({ error: 'No fue posible cargar tus pedidos' });
+  }
+});
+
+router.get('/ubicaciones/activas', checkRole(['admin']), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ur.pedido_id, ur.repartidor_id, ur.latitud, ur.longitud,
+              ur.precision_metros, ur.actualizado_en,
+              rep.nombre AS repartidor_nombre, cli.nombre AS cliente_nombre
+       FROM ubicaciones_repartidores ur
+       JOIN pedidos p ON p.id = ur.pedido_id AND p.empresa_id = ur.empresa_id
+       JOIN usuarios rep ON rep.id = ur.repartidor_id
+       JOIN usuarios cli ON cli.id = p.cliente_id
+       WHERE ur.empresa_id = $1
+         AND p.estado IN ('asignado', 'en_camino')
+         AND ur.actualizado_en >= CURRENT_TIMESTAMP - INTERVAL '12 hours'
+       ORDER BY ur.actualizado_en DESC`,
+      [req.user.empresa_id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error cargando ubicaciones activas:', error);
+    return res.status(500).json({ error: 'No fue posible cargar el mapa operativo' });
+  }
+});
+
+router.get('/:id/ubicacion', checkRole(['cliente', 'admin', 'repartidor']), async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!isPositiveId(orderId)) {
+    return res.status(400).json({ error: 'Pedido inválido' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT ur.pedido_id, ur.repartidor_id, ur.latitud, ur.longitud,
+              ur.precision_metros, ur.actualizado_en,
+              p.cliente_id, p.estado
+       FROM ubicaciones_repartidores ur
+       JOIN pedidos p ON p.id = ur.pedido_id AND p.empresa_id = ur.empresa_id
+       WHERE ur.pedido_id = $1 AND ur.empresa_id = $2`,
+      [orderId, req.user.empresa_id]
+    );
+    const location = result.rows[0];
+    if (!location) {
+      return res.status(404).json({ error: 'El repartidor todavía no comparte su ubicación' });
+    }
+
+    const allowed = req.user.rol === 'admin'
+      || (req.user.rol === 'cliente' && location.cliente_id === req.user.id)
+      || (req.user.rol === 'repartidor' && location.repartidor_id === req.user.id);
+    if (!allowed) {
+      return res.status(403).json({ error: 'No puedes consultar esta ubicación' });
+    }
+
+    return res.json({
+      pedido_id: location.pedido_id,
+      repartidor_id: location.repartidor_id,
+      latitud: location.latitud,
+      longitud: location.longitud,
+      precision_metros: location.precision_metros,
+      actualizado_en: location.actualizado_en
+    });
+  } catch (error) {
+    console.error('Error cargando ubicación del pedido:', error);
+    return res.status(500).json({ error: 'No fue posible cargar la ubicación' });
+  }
+});
+
+router.get('/admin/todos', checkRole(['admin']), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT p.*, u.nombre AS cliente_nombre,
+              EXISTS (SELECT 1 FROM comprobantes_entrega ce WHERE ce.pedido_id = p.id) AS tiene_comprobante,
+              COALESCE(
+                (
+                  SELECT json_agg(
+                    json_build_object(
+                      'producto_id', pr.id,
+                      'nombre', pr.nombre,
+                      'cantidad', dp.cantidad,
+                      'precio_unitario', dp.precio_unitario,
+                      'es_retornable', dp.es_retornable,
+                      'deposito_unitario', dp.deposito_unitario
+                    ) ORDER BY dp.id
+                  )
+                  FROM detalle_pedidos dp
+                  JOIN productos pr ON pr.id = dp.producto_id
+                  WHERE dp.pedido_id = p.id
+                ),
+                '[]'::json
+              ) AS productos
+       FROM pedidos p
+       JOIN usuarios u ON u.id = p.cliente_id
+       WHERE p.empresa_id = $1
+       ORDER BY p.created_at DESC
+       LIMIT 1000`,
+      [req.user.empresa_id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error cargando pedidos de administración:', error);
+    return res.status(500).json({ error: 'No fue posible cargar los pedidos' });
+  }
+});
+
+router.get('/repartidor/total-por-dia/:repartidorId', checkRole(['repartidor']), async (req, res) => {
+  if (Number(req.params.repartidorId) !== req.user.id) {
+    return res.status(403).json({ error: 'No puedes consultar datos de otro repartidor' });
+  }
+  try {
+    const result = await pool.query(
+      `SELECT entregado_en::DATE AS fecha,
+              COUNT(*)::INT AS total_pedidos,
+              COALESCE(SUM(total), 0) AS total_ventas
+       FROM pedidos
+       WHERE empresa_id = $1
+         AND repartidor_id = $2
+         AND estado = 'entregado'
+       GROUP BY entregado_en::DATE
+       ORDER BY entregado_en::DATE DESC
+       LIMIT 30`,
+      [req.user.empresa_id, req.user.id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error cargando historial de ventas:', error);
+    return res.status(500).json({ error: 'No fue posible cargar el historial' });
+  }
+});
+
+router.get('/repartidor/:repartidorId', checkRole(['repartidor']), async (req, res) => {
+  if (Number(req.params.repartidorId) !== req.user.id) {
+    return res.status(403).json({ error: 'No puedes consultar pedidos de otro repartidor' });
+  }
+  try {
+    const result = await pool.query(
+      `SELECT p.*, u.nombre AS cliente_nombre, u.telefono AS cliente_telefono
+       FROM pedidos p
+       JOIN usuarios u ON u.id = p.cliente_id
+       WHERE p.empresa_id = $1
+         AND p.repartidor_id = $2
+         AND p.estado IN ('asignado', 'en_camino')
+       ORDER BY p.created_at ASC`,
+      [req.user.empresa_id, req.user.id]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Error cargando pedidos asignados:', error);
+    return res.status(500).json({ error: 'No fue posible cargar los pedidos asignados' });
+  }
+});
+
+router.get('/reporte/productos', checkRole(['admin']), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT pr.nombre, SUM(dp.cantidad)::INT AS total_vendido
        FROM detalle_pedidos dp
-       JOIN productos p ON dp.producto_id = p.id
-       JOIN pedidos ped ON dp.pedido_id = ped.id
-       WHERE ped.estado = 'entregado'
-       GROUP BY p.id, p.nombre
-       ORDER BY total_vendido DESC LIMIT 5`
+       JOIN productos pr ON pr.id = dp.producto_id
+       JOIN pedidos ped ON ped.id = dp.pedido_id
+       WHERE ped.empresa_id = $1 AND ped.estado = 'entregado'
+       GROUP BY pr.id, pr.nombre
+       ORDER BY total_vendido DESC
+       LIMIT 5`,
+      [req.user.empresa_id]
     );
-    res.json(result.rows);
+    return res.json(result.rows);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error generando reporte de productos:', error);
+    return res.status(500).json({ error: 'No fue posible generar el reporte' });
   }
 });
 
-
-// ============ NUEVAS RUTAS PARA REPORTES Y FILTROS ============
-
-// 🔥 ADMIN - Reporte de ventas agrupadas por día de la semana
-router.get('/reporte/ventas-por-dia-semana', verify, async (req, res) => {
+router.get('/reporte/ventas-por-dia-semana', checkRole(['admin']), async (req, res) => {
   try {
-    if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
-    
-    const result = await pool.query(`
-      SELECT 
-        EXTRACT(DOW FROM created_at) as dia_semana,
-        CASE EXTRACT(DOW FROM created_at)
-          WHEN 0 THEN 'Domingo'
-          WHEN 1 THEN 'Lunes'
-          WHEN 2 THEN 'Martes'
-          WHEN 3 THEN 'Miércoles'
-          WHEN 4 THEN 'Jueves'
-          WHEN 5 THEN 'Viernes'
-          WHEN 6 THEN 'Sábado'
-        END as nombre_dia,
-        COUNT(*) as total_pedidos,
-        COALESCE(SUM(total), 0) as total_ventas
-      FROM pedidos 
-      WHERE estado = 'entregado'
-      GROUP BY dia_semana
-      ORDER BY dia_semana
-    `);
-    res.json(result.rows);
+    const result = await pool.query(
+      `WITH ventas_por_dia AS (
+         SELECT EXTRACT(DOW FROM COALESCE(entregado_en, actualizado_en, created_at))::INT AS dia_semana, total
+         FROM pedidos
+         WHERE empresa_id = $1 AND estado = 'entregado'
+       )
+       SELECT
+         dia_semana,
+         CASE dia_semana
+           WHEN 0 THEN 'Domingo'
+           WHEN 1 THEN 'Lunes'
+           WHEN 2 THEN 'Martes'
+           WHEN 3 THEN 'Miércoles'
+           WHEN 4 THEN 'Jueves'
+           WHEN 5 THEN 'Viernes'
+           WHEN 6 THEN 'Sábado'
+         END AS nombre_dia,
+         COUNT(*)::INT AS total_pedidos,
+         COALESCE(SUM(total), 0) AS total_ventas
+       FROM ventas_por_dia
+       GROUP BY dia_semana
+       ORDER BY dia_semana`,
+      [req.user.empresa_id]
+    );
+    return res.json(result.rows);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error generando ventas por día:', error);
+    return res.status(500).json({ error: 'No fue posible generar el reporte' });
   }
 });
 
-// 🔥 ADMIN - Reporte de ventas por mes específico
-router.get('/reporte/ventas-por-mes/:anio/:mes', verify, async (req, res) => {
+router.get('/reporte/ventas-por-mes/:anio/:mes', checkRole(['admin']), async (req, res) => {
+  const year = Number(req.params.anio);
+  const month = Number(req.params.mes);
+  if (!Number.isInteger(year) || year < 2020 || year > 2100
+      || !Number.isInteger(month) || month < 1 || month > 12) {
+    return res.status(400).json({ error: 'Periodo inválido' });
+  }
   try {
-    if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
-    
-    const { anio, mes } = req.params;
-    const result = await pool.query(`
-      SELECT 
-        EXTRACT(DAY FROM created_at) as dia,
-        COUNT(*) as total_pedidos,
-        COALESCE(SUM(total), 0) as total_ventas
-      FROM pedidos 
-      WHERE estado = 'entregado' 
-        AND EXTRACT(YEAR FROM created_at) = $1 
-        AND EXTRACT(MONTH FROM created_at) = $2
-      GROUP BY dia
-      ORDER BY dia ASC
-    `, [anio, mes]);
-    res.json(result.rows);
+    const result = await pool.query(
+      `SELECT
+         EXTRACT(DAY FROM entregado_en)::INT AS dia,
+         COUNT(*)::INT AS total_pedidos,
+         COALESCE(SUM(total), 0) AS total_ventas
+       FROM pedidos
+       WHERE empresa_id = $1
+         AND estado = 'entregado'
+         AND EXTRACT(YEAR FROM entregado_en) = $2
+         AND EXTRACT(MONTH FROM entregado_en) = $3
+       GROUP BY dia
+       ORDER BY dia`,
+      [req.user.empresa_id, year, month]
+    );
+    return res.json(result.rows);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error generando ventas por mes:', error);
+    return res.status(500).json({ error: 'No fue posible generar el reporte' });
   }
 });
 
-// 🔥 ADMIN - Resumen rápido (hoy, semana, mes)
-router.get('/reporte/resumen-rapido', verify, async (req, res) => {
+router.get('/reporte/resumen-rapido', checkRole(['admin']), async (req, res) => {
   try {
-    if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Acceso denegado' });
-    
-    const hoy = new Date().toISOString().split('T')[0];
-    const semanaInicio = new Date();
-    semanaInicio.setDate(semanaInicio.getDate() - semanaInicio.getDay());
-    const mesInicio = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    
-    const result = await pool.query(`
-      SELECT 
-        COALESCE(SUM(CASE WHEN created_at::DATE = $1 THEN total ELSE 0 END), 0) as ventas_hoy,
-        COALESCE(SUM(CASE WHEN created_at::DATE >= $2 THEN total ELSE 0 END), 0) as ventas_semana,
-        COALESCE(SUM(CASE WHEN created_at::DATE >= $3 THEN total ELSE 0 END), 0) as ventas_mes,
-        COUNT(CASE WHEN estado = 'pendiente' THEN 1 END) as pedidos_pendientes,
-        COUNT(CASE WHEN estado = 'entregado' THEN 1 END) as pedidos_entregados
-      FROM pedidos
-      WHERE estado != 'cancelado'
-    `, [hoy, semanaInicio.toISOString().split('T')[0], mesInicio.toISOString().split('T')[0]]);
-    res.json(result.rows[0]);
+    const result = await pool.query(
+      `WITH pedidos_resumen AS (
+         SELECT
+           COALESCE(SUM(total) FILTER (
+             WHERE estado = 'entregado' AND entregado_en::DATE = CURRENT_DATE
+           ), 0) AS ventas_hoy,
+           COALESCE(SUM(total) FILTER (
+             WHERE estado = 'entregado'
+               AND entregado_en >= date_trunc('week', CURRENT_TIMESTAMP)
+           ), 0) AS ventas_semana,
+           COALESCE(SUM(total) FILTER (
+             WHERE estado = 'entregado'
+               AND entregado_en >= date_trunc('month', CURRENT_TIMESTAMP)
+           ), 0) AS ventas_mes,
+           COUNT(*) FILTER (WHERE estado = 'pendiente')::INT AS pedidos_pendientes,
+           COUNT(*) FILTER (WHERE estado = 'entregado')::INT AS pedidos_entregados
+         FROM pedidos
+         WHERE empresa_id = $1
+       ), ruta_resumen AS (
+         SELECT
+           COALESCE(SUM(total) FILTER (
+             WHERE estado_revision = 'aprobada' AND vendido_en::DATE = CURRENT_DATE
+           ), 0) AS ventas_hoy,
+           COALESCE(SUM(total) FILTER (
+             WHERE estado_revision = 'aprobada'
+               AND vendido_en >= date_trunc('week', CURRENT_TIMESTAMP)
+           ), 0) AS ventas_semana,
+           COALESCE(SUM(total) FILTER (
+             WHERE estado_revision = 'aprobada'
+               AND vendido_en >= date_trunc('month', CURRENT_TIMESTAMP)
+           ), 0) AS ventas_mes
+         FROM ventas_ruta
+         WHERE empresa_id = $1
+       )
+       SELECT p.ventas_hoy + r.ventas_hoy AS ventas_hoy,
+              p.ventas_semana + r.ventas_semana AS ventas_semana,
+              p.ventas_mes + r.ventas_mes AS ventas_mes,
+              p.pedidos_pendientes,
+              p.pedidos_entregados
+       FROM pedidos_resumen p CROSS JOIN ruta_resumen r`,
+      [req.user.empresa_id]
+    );
+    return res.json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error generando resumen:', error);
+    return res.status(500).json({ error: 'No fue posible generar el resumen' });
   }
 });
 
-// 🔥 REPARTIDOR - Total vendido por día (historial propio)
-router.get('/repartidor/total-por-dia/:repartidorId', async (req, res) => {
-  try {
-    const { repartidorId } = req.params;
-    const result = await pool.query(`
-      SELECT 
-        created_at::DATE as fecha,
-        COUNT(*) as total_pedidos,
-        COALESCE(SUM(total), 0) as total_ventas
-      FROM pedidos 
-      WHERE repartidor_id = $1 AND estado = 'entregado'
-      GROUP BY created_at::DATE
-      ORDER BY created_at::DATE DESC
-      LIMIT 30
-    `, [repartidorId]);
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 🔥 CLIENTE - Ocultar pedido del historial (soft delete visual)
-router.put('/cliente/ocultar/:pedidoId', verify, async (req, res) => {
-  try {
-    const { pedidoId } = req.params;
-    // Verificar que el pedido pertenece al cliente
-    const pedido = await pool.query('SELECT cliente_id FROM pedidos WHERE id = $1', [pedidoId]);
-    if (pedido.rows[0]?.cliente_id !== req.user.id) {
-      return res.status(403).json({ error: 'No tienes permiso' });
-    }
-    await pool.query('UPDATE pedidos SET oculto_para_cliente = true WHERE id = $1', [pedidoId]);
-    res.json({ message: 'Pedido ocultado del historial' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// CLIENTE - Vaciar todo el historial (ocultar todos los pedidos visualmente)
-router.put('/cliente/vaciar-historial', verify, async (req, res) => {
+router.put('/cliente/vaciar-historial', checkRole(['cliente']), async (req, res) => {
   try {
     await pool.query(
-      'UPDATE pedidos SET oculto_para_cliente = true WHERE cliente_id = $1 AND estado IN ($2, $3)',
-      [req.user.id, 'entregado', 'cancelado']
+      `UPDATE pedidos
+       SET oculto_para_cliente = TRUE
+       WHERE empresa_id = $1
+         AND cliente_id = $2
+         AND estado IN ('entregado', 'cancelado')`,
+      [req.user.empresa_id, req.user.id]
     );
-    res.json({ message: 'Historial vaciado correctamente' });
+    return res.json({ message: 'Historial vaciado correctamente' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error ocultando historial:', error);
+    return res.status(500).json({ error: 'No fue posible vaciar el historial' });
   }
 });
 
-// CLIENTE - Ocultar un pedido específico
-router.put('/cliente/ocultar/:pedidoId', verify, async (req, res) => {
+router.put('/cliente/ocultar/:pedidoId', checkRole(['cliente']), async (req, res) => {
+  if (!isPositiveId(req.params.pedidoId)) {
+    return res.status(400).json({ error: 'Pedido inválido' });
+  }
   try {
-    const { pedidoId } = req.params;
-    // Verificar que el pedido pertenece al cliente
-    const pedido = await pool.query('SELECT cliente_id FROM pedidos WHERE id = $1', [pedidoId]);
-    if (pedido.rows[0]?.cliente_id !== req.user.id) {
-      return res.status(403).json({ error: 'No tienes permiso' });
+    const result = await pool.query(
+      `UPDATE pedidos
+       SET oculto_para_cliente = TRUE
+       WHERE id = $1
+         AND empresa_id = $2
+         AND cliente_id = $3
+         AND estado IN ('entregado', 'cancelado')
+       RETURNING id`,
+      [Number(req.params.pedidoId), req.user.empresa_id, req.user.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Pedido no encontrado o todavía activo' });
     }
-    await pool.query('UPDATE pedidos SET oculto_para_cliente = true WHERE id = $1', [pedidoId]);
-    res.json({ message: 'Pedido ocultado' });
+    return res.json({ message: 'Pedido ocultado' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error ocultando pedido:', error);
+    return res.status(500).json({ error: 'No fue posible ocultar el pedido' });
   }
 });
+
+router.put('/:id/asignar', checkRole(['admin']), async (req, res) => {
+  const orderId = Number(req.params.id);
+  const driverId = Number(req.body.repartidor_id);
+  if (!isPositiveId(orderId) || !isPositiveId(driverId)) {
+    return res.status(400).json({ error: 'Pedido o repartidor inválido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const driver = await client.query(
+      `SELECT id FROM usuarios
+       WHERE id = $1 AND empresa_id = $2
+         AND rol = 'repartidor' AND estado = 'activo'`,
+      [driverId, req.user.empresa_id]
+    );
+    if (driver.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Repartidor no disponible' });
+    }
+
+    const result = await client.query(
+      `UPDATE pedidos
+       SET repartidor_id = $1, estado = 'asignado', actualizado_en = CURRENT_TIMESTAMP
+       WHERE id = $2 AND empresa_id = $3 AND estado = 'pendiente'
+       RETURNING id, cliente_id`,
+      [driverId, orderId, req.user.empresa_id]
+    );
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'El pedido ya no está disponible para asignar' });
+    }
+
+    await client.query('COMMIT');
+    emitToUser(req, driverId, 'nuevo_pedido_asignado', { pedidoId: orderId });
+    emitToUser(req, result.rows[0].cliente_id, 'pedido_actualizado', {
+      pedidoId: orderId,
+      estado: 'asignado'
+    });
+    emitToAdmins(req, req.user.empresa_id, 'pedido_actualizado', {
+      pedidoId: orderId,
+      estado: 'asignado'
+    });
+    return res.json({ message: 'Repartidor asignado', estado: 'asignado' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error asignando pedido:', error);
+    return res.status(500).json({ error: 'No fue posible asignar el pedido' });
+  } finally {
+    client.release();
+  }
+});
+
+router.put('/:id/estado', async (req, res) => {
+  const orderId = Number(req.params.id);
+  const requestedState = req.body.estado;
+  if (!isPositiveId(orderId)) {
+    return res.status(400).json({ error: 'Pedido inválido' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const orderResult = await client.query(
+      `SELECT id, empresa_id, cliente_id, repartidor_id, estado
+       FROM pedidos
+       WHERE id = $1 AND empresa_id = $2
+       FOR UPDATE`,
+      [orderId, req.user.empresa_id]
+    );
+    const order = orderResult.rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    let allowed = false;
+    if (req.user.rol === 'cliente') {
+      allowed = order.cliente_id === req.user.id
+        && order.estado === 'pendiente'
+        && requestedState === 'cancelado';
+    } else if (req.user.rol === 'repartidor') {
+      const ownsOrder = order.repartidor_id === req.user.id;
+      allowed = ownsOrder && (
+        (order.estado === 'asignado' && requestedState === 'en_camino')
+        || (['asignado', 'en_camino'].includes(order.estado)
+          && requestedState === 'entregado'
+          && !getCompanyModules(req.user.empresa_modulos).logistica)
+      );
+    } else if (req.user.rol === 'admin') {
+      allowed = ['pendiente', 'asignado', 'en_camino'].includes(order.estado)
+        && requestedState === 'cancelado';
+    }
+
+    if (!allowed) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Cambio de estado no permitido' });
+    }
+
+    if (requestedState === 'cancelado') {
+      await client.query(
+        `UPDATE productos pr
+         SET stock = pr.stock + dp.cantidad
+         FROM detalle_pedidos dp
+         WHERE dp.pedido_id = $1
+           AND dp.producto_id = pr.id
+           AND pr.empresa_id = $2`,
+        [orderId, req.user.empresa_id]
+      );
+    }
+
+    const result = await client.query(
+      `UPDATE pedidos
+       SET estado = $1::varchar,
+           actualizado_en = CURRENT_TIMESTAMP,
+           entregado_en = CASE
+             WHEN $1::varchar = 'entregado' THEN CURRENT_TIMESTAMP
+             ELSE entregado_en
+           END
+       WHERE id = $2 AND empresa_id = $3
+       RETURNING *`,
+      [requestedState, orderId, req.user.empresa_id]
+    );
+    await client.query('COMMIT');
+
+    emitToAdmins(req, req.user.empresa_id, 'pedido_actualizado', {
+      pedidoId: orderId,
+      estado: requestedState
+    });
+    emitToUser(req, order.cliente_id, 'pedido_actualizado', {
+      pedidoId: orderId,
+      estado: requestedState
+    });
+    if (requestedState === 'entregado') {
+      emitToUser(req, order.cliente_id, 'confirmacion_entrega', { pedidoId: orderId });
+    }
+    return res.json(result.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error cambiando estado del pedido:', error);
+    return res.status(500).json({ error: 'No fue posible actualizar el pedido' });
+  } finally {
+    client.release();
+  }
+});
+
+router.put('/:id/confirmar', checkRole(['cliente']), async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!isPositiveId(orderId)) {
+    return res.status(400).json({ error: 'Pedido inválido' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE pedidos
+       SET confirmado = TRUE, actualizado_en = CURRENT_TIMESTAMP
+       WHERE id = $1
+         AND empresa_id = $2
+         AND cliente_id = $3
+         AND estado = 'entregado'
+       RETURNING id`,
+      [orderId, req.user.empresa_id, req.user.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(409).json({ error: 'El pedido no puede confirmarse' });
+    }
+    emitToAdmins(req, req.user.empresa_id, 'pedido_confirmado', { pedidoId: orderId });
+    return res.json({ message: 'Recepción confirmada' });
+  } catch (error) {
+    console.error('Error confirmando pedido:', error);
+    return res.status(500).json({ error: 'No fue posible confirmar el pedido' });
+  }
+});
+
 module.exports = router;

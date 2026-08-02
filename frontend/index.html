@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AquaControl - Software para distribución de agua</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/assets/inter.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: white; color: #1a1a2e; scroll-behavior: smooth; }
@@ -37,7 +35,7 @@
         .hero-stats { display: flex; gap: 40px; margin-top: 48px; }
         .stat-item { text-align: center; }
         .stat-number { font-size: 32px; font-weight: 800; color: #0077b6; }
-        .hero-image div { background: linear-gradient(135deg, #0077b6, #00b4d8); border-radius: 30px; padding: 40px; text-align: center; color: white; }
+        .hero-image > div { background: linear-gradient(135deg, #0077b6, #00b4d8); border-radius: 30px; padding: 40px; text-align: center; color: white; }
         
         .section { padding: 80px 24px; }
         .section-container { max-width: 1280px; margin: 0 auto; }
@@ -77,13 +75,21 @@
         .footer-bottom { text-align: center; padding-top: 40px; margin-top: 40px; border-top: 1px solid #333; }
         
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
-        .modal-content { background: white; border-radius: 20px; padding: 40px; max-width: 400px; width: 90%; position: relative; }
+        .modal-content { background: white; border-radius: 20px; padding: 40px; max-width: 480px; width: 90%; position: relative; max-height: 92vh; overflow-y: auto; }
         .modal-close { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #999; }
         .modal-title { font-size: 24px; font-weight: 700; margin-bottom: 24px; text-align: center; color: #1a1a2e; }
         .modal-input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; }
         .modal-btn { width: 100%; padding: 12px; background: #0077b6; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+        .modal-btn:disabled { opacity: 0.65; cursor: wait; }
         .modal-switch { text-align: center; margin-top: 20px; color: #666; }
         .modal-switch a { color: #0077b6; text-decoration: none; cursor: pointer; }
+        .register-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 14px; background: #eef2f6; border-radius: 8px; }
+        .register-mode button { border: none; background: transparent; padding: 10px; border-radius: 6px; color: #536170; font-weight: 600; cursor: pointer; }
+        .register-mode button.active { background: white; color: #0077b6; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+        .field-help { color: #667085; font-size: 12px; line-height: 1.45; margin: -4px 0 4px; }
+        .form-status { min-height: 20px; margin: 8px 0 0; font-size: 14px; }
+        .form-status.error { color: #c62828; }
+        .form-status.success { color: #157347; }
         
         @media (max-width: 768px) {
             .hero-container { grid-template-columns: 1fr; text-align: center; }
@@ -93,12 +99,13 @@
             .section-title { font-size: 28px; }
         }
     </style>
+    <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
 </head>
-<body>
+<body class="aq-public">
     <header class="header">
         <div class="nav-container">
             <div class="logo">
-                <span class="logo-icon">💧</span>
+                <span class="logo-icon"><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""></span>
                 <span class="logo-text">AquaControl</span>
             </div>
             <div class="nav-links">
@@ -107,7 +114,11 @@
                 <a href="#precios">Planes y Precios</a>
                 <a href="#contacto">Contáctanos</a>
                 <button class="btn-login" onclick="mostrarLogin()">Iniciar Sesión</button>
-                <button class="btn-register" onclick="mostrarRegistro()">Prueba Gratis</button>
+                <button class="btn-register" onclick="mostrarRegistro('empresa')">Crear distribuidora</button>
+            </div>
+            <div class="nav-mobile-actions" aria-label="Acciones de cuenta">
+                <button class="nav-icon-button" type="button" onclick="mostrarLogin()" title="Iniciar sesión" aria-label="Iniciar sesión"><i class="fas fa-right-to-bracket"></i></button>
+                <button class="nav-mobile-register" type="button" onclick="mostrarRegistro('empresa')"><i class="fas fa-building-circle-check"></i> Crear</button>
             </div>
         </div>
     </header>
@@ -116,22 +127,64 @@
         <div class="modal-content">
             <span class="modal-close" onclick="cerrarModal('loginModal')">&times;</span>
             <h2 class="modal-title">Iniciar Sesión</h2>
-            <input type="email" id="loginEmail" class="modal-input" placeholder="Correo electrónico">
-            <input type="password" id="loginPassword" class="modal-input" placeholder="Contraseña">
-            <button class="modal-btn" onclick="loginCliente()">Ingresar</button>
-            <p class="modal-switch">¿No tienes cuenta? <a onclick="cambiarARegistro()">Regístrate gratis</a></p>
+            <p style="color:#667085; margin:-10px 0 18px;">Un solo acceso para administradores, repartidores y clientes.</p>
+            <input type="email" id="loginEmail" class="modal-input" placeholder="Correo electrónico" autocomplete="email">
+            <input type="password" id="loginPassword" class="modal-input" placeholder="Contraseña" autocomplete="current-password">
+            <div id="loginError" style="color:#c62828; min-height:20px; margin-bottom:8px;" role="alert"></div>
+            <button id="loginButton" class="modal-btn" onclick="loginUsuario()">Ingresar</button>
+            <p class="modal-switch"><a onclick="mostrarRecuperacion()">Olvidé mi contraseña</a></p>
+            <p class="modal-switch">¿Gestionas una distribuidora? <a onclick="cambiarARegistro()">Crea tu espacio</a></p>
+        </div>
+    </div>
+
+    <div id="recoveryModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="cerrarModal('recoveryModal')">&times;</span>
+            <h2 class="modal-title">Recuperar contraseña</h2>
+            <p class="field-help">Enviaremos un enlace de un solo uso a tu correo.</p>
+            <input type="email" id="recoveryEmail" class="modal-input" maxlength="160" placeholder="Correo electrónico" autocomplete="email">
+            <div id="recoveryStatus" class="form-status" role="status"></div>
+            <button id="recoveryButton" class="modal-btn" onclick="solicitarRecuperacion()">Enviar enlace</button>
+        </div>
+    </div>
+
+    <div id="resetModal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Nueva contraseña</h2>
+            <input type="password" id="resetPassword" class="modal-input" maxlength="128" placeholder="Nueva contraseña (mínimo 10 caracteres)" autocomplete="new-password">
+            <input type="password" id="resetPasswordConfirm" class="modal-input" maxlength="128" placeholder="Confirma la nueva contraseña" autocomplete="new-password">
+            <div id="resetStatus" class="form-status" role="status"></div>
+            <button id="resetButton" class="modal-btn" onclick="restablecerPassword()">Cambiar contraseña</button>
         </div>
     </div>
 
     <div id="registerModal" class="modal">
         <div class="modal-content">
             <span class="modal-close" onclick="cerrarModal('registerModal')">&times;</span>
-            <h2 class="modal-title">Crear cuenta gratis</h2>
-            <input type="text" id="regNombre" class="modal-input" placeholder="Nombre completo">
-            <input type="email" id="regEmail" class="modal-input" placeholder="Correo electrónico">
-            <input type="password" id="regPassword" class="modal-input" placeholder="Contraseña">
-            <input type="text" id="regTelefono" class="modal-input" placeholder="Teléfono">
-            <button class="modal-btn" onclick="registrarCliente()">Registrarse</button>
+            <h2 id="registerTitle" class="modal-title">Crea tu distribuidora</h2>
+            <div class="register-mode" role="tablist" aria-label="Tipo de registro">
+                <button id="modeEmpresa" class="active" type="button" role="tab" aria-selected="true" onclick="setRegisterMode('empresa')">
+                    <i class="fas fa-building"></i> Empresa
+                </button>
+                <button id="modeCliente" type="button" role="tab" aria-selected="false" onclick="setRegisterMode('cliente')">
+                    <i class="fas fa-user"></i> Cliente
+                </button>
+            </div>
+            <div id="empresaFields">
+                <input type="text" id="regEmpresaNombre" class="modal-input" maxlength="120" placeholder="Nombre de la distribuidora" autocomplete="organization">
+                <input type="text" id="regEmpresaSlug" class="modal-input" maxlength="80" placeholder="Código de empresa, por ejemplo: agua-centro">
+                <p class="field-help">Este código identifica tu negocio y permite que tus clientes se registren.</p>
+            </div>
+            <div id="clienteFields" hidden>
+                <input type="text" id="regEmpresa" class="modal-input" maxlength="80" placeholder="Código de tu distribuidora" autocomplete="organization">
+                <p class="field-help">Solicita este código al administrador de tu distribuidora.</p>
+            </div>
+            <input type="text" id="regNombre" class="modal-input" maxlength="100" placeholder="Nombre completo" autocomplete="name">
+            <input type="email" id="regEmail" class="modal-input" maxlength="160" placeholder="Correo electrónico" autocomplete="email">
+            <input type="password" id="regPassword" class="modal-input" maxlength="128" placeholder="Contraseña (mínimo 10 caracteres)" autocomplete="new-password">
+            <input type="tel" id="regTelefono" class="modal-input" maxlength="20" placeholder="Teléfono" autocomplete="tel">
+            <div id="registerError" class="form-status error" role="alert"></div>
+            <button id="registerButton" class="modal-btn" onclick="registrarCuenta()">Crear distribuidora</button>
             <p class="modal-switch">¿Ya tienes cuenta? <a onclick="cambiarALogin()">Iniciar sesión</a></p>
         </div>
     </div>
@@ -139,23 +192,53 @@
     <section id="inicio" class="hero">
         <div class="hero-container">
             <div>
-                <h1 class="hero-title">Gestiona tu distribución de agua de forma inteligente</h1>
-                <p class="hero-subtitle">El software diseñado especialmente para distribuidoras de agua, soda y productos retornables. Optimiza tus repartos, controla inventario y aumenta tus ganancias.</p>
+                <h1 class="hero-title">AquaControl</h1>
+                <p class="hero-subtitle">Control operativo para distribuidoras de agua, soda y productos retornables. Coordina pedidos, inventario, rutas y cierres desde un solo sistema.</p>
                 <div class="hero-buttons">
-                    <button class="btn-primary" onclick="mostrarRegistro()">Probar gratis 7 días</button>
+                    <button class="btn-primary" onclick="mostrarRegistro('empresa')">Probar gratis 14 días</button>
                     <button class="btn-outline" onclick="document.getElementById('caracteristicas').scrollIntoView({behavior:'smooth'})">Ver características</button>
                 </div>
                 <div class="hero-stats">
-                    <div class="stat-item"><div class="stat-number">500+</div><div>Empresas</div></div>
-                    <div class="stat-item"><div class="stat-number">50k+</div><div>Pedidos/mes</div></div>
-                    <div class="stat-item"><div class="stat-number">98%</div><div>Satisfacción</div></div>
+                    <div class="stat-item"><div class="stat-number">14</div><div>Días de prueba</div></div>
+                    <div class="stat-item"><div class="stat-number">5</div><div>Perfiles de acceso</div></div>
+                    <div class="stat-item"><div class="stat-number">4</div><div>Módulos configurables</div></div>
                 </div>
             </div>
             <div class="hero-image">
-                <div>
-                    <span style="font-size: 80px;">💧</span>
-                    <h3 style="margin-top: 20px;">AquaControl Dashboard</h3>
-                    <p>Visualiza tus ventas, pedidos y repartos en tiempo real</p>
+                <div id="showcaseCarousel" class="showcase-carousel" role="region" aria-roledescription="carrusel" aria-label="Cómo funciona AquaControl" tabindex="0">
+                    <div class="showcase-track" aria-live="off">
+                        <article class="showcase-slide is-active" aria-hidden="false">
+                            <img src="/assets/carousel/operacion-bodega.jpg" alt="Administrador revisando inventario en una distribuidora de agua" width="1536" height="1024">
+                            <div class="showcase-caption">
+                                <span class="showcase-label"><i class="fas fa-boxes-stacked"></i> Operación</span>
+                                <h2>Pedidos e inventario en un solo lugar</h2>
+                                <p>Controla existencias, retornables y movimientos diarios sin perder trazabilidad.</p>
+                            </div>
+                        </article>
+                        <article class="showcase-slide" aria-hidden="true">
+                            <img src="/assets/carousel/entrega-ruta.jpg" alt="Repartidor entregando un bidón desde su vehículo de distribución" width="1536" height="1024" loading="lazy">
+                            <div class="showcase-caption">
+                                <span class="showcase-label"><i class="fas fa-route"></i> Distribución</span>
+                                <h2>Rutas conectadas con cada entrega</h2>
+                                <p>El repartidor recibe pedidos, comparte ubicación y registra ventas durante su recorrido.</p>
+                            </div>
+                        </article>
+                        <article class="showcase-slide" aria-hidden="true">
+                            <img src="/assets/carousel/control-administrativo.jpg" alt="Administrador revisando el desempeño de una distribuidora de agua" width="1536" height="1024" loading="lazy">
+                            <div class="showcase-caption">
+                                <span class="showcase-label"><i class="fas fa-chart-line"></i> Administración</span>
+                                <h2>Decisiones con información actualizada</h2>
+                                <p>Supervisa ventas, cierres, personal y planta desde el panel de tu empresa.</p>
+                            </div>
+                        </article>
+                    </div>
+                    <button class="showcase-control showcase-prev" type="button" aria-label="Imagen anterior"><i class="fas fa-chevron-left"></i></button>
+                    <button class="showcase-control showcase-next" type="button" aria-label="Imagen siguiente"><i class="fas fa-chevron-right"></i></button>
+                    <div class="showcase-dots" role="tablist" aria-label="Seleccionar imagen">
+                        <button class="is-active" type="button" role="tab" aria-selected="true" aria-label="Pedidos e inventario"></button>
+                        <button type="button" role="tab" aria-selected="false" aria-label="Rutas y entregas" tabindex="-1"></button>
+                        <button type="button" role="tab" aria-selected="false" aria-label="Control administrativo" tabindex="-1"></button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -166,12 +249,12 @@
             <h2 class="section-title">Todo lo que necesitas para tu negocio</h2>
             <p class="section-subtitle">Una plataforma completa para gestionar pedidos, repartos y ventas</p>
             <div class="features-grid">
-                <div class="feature-card"><div class="feature-icon">📱</div><h3 class="feature-title">App para Clientes</h3><p class="feature-desc">Pedidos fáciles, seguimiento en tiempo real y notificaciones automáticas.</p></div>
-                <div class="feature-card"><div class="feature-icon">🚚</div><h3 class="feature-title">App para Repartidores</h3><p class="feature-desc">GPS integrado, rutas optimizadas y confirmación de entregas.</p></div>
-                <div class="feature-card"><div class="feature-icon">📊</div><h3 class="feature-title">Dashboard Administrativo</h3><p class="feature-desc">Reportes de ventas, control de inventario y gestión de personal.</p></div>
-                <div class="feature-card"><div class="feature-icon">📍</div><h3 class="feature-title">Seguimiento GPS</h3><p class="feature-desc">Localiza a tus repartidores en tiempo real estilo Uber.</p></div>
-                <div class="feature-card"><div class="feature-icon">📦</div><h3 class="feature-title">Inventario Digital</h3><p class="feature-desc">Control de stock, alertas de productos bajos y gestión de lotes.</p></div>
-                <div class="feature-card"><div class="feature-icon">💰</div><h3 class="feature-title">Gestión de Pagos</h3><p class="feature-desc">Múltiples métodos de pago, facturación electrónica y reportes.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fas fa-mobile-screen-button"></i></div><h3 class="feature-title">App para Clientes</h3><p class="feature-desc">Pedidos fáciles, seguimiento en tiempo real y notificaciones automáticas.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fas fa-truck-fast"></i></div><h3 class="feature-title">App para Repartidores</h3><p class="feature-desc">GPS integrado, agenda de entregas y comprobantes firmados.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fas fa-chart-column"></i></div><h3 class="feature-title">Dashboard Administrativo</h3><p class="feature-desc">Reportes de ventas, control de inventario y gestión de personal.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fas fa-location-crosshairs"></i></div><h3 class="feature-title">Seguimiento GPS</h3><p class="feature-desc">Localiza a tus repartidores en tiempo real durante cada entrega.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fas fa-boxes-stacked"></i></div><h3 class="feature-title">Inventario Digital</h3><p class="feature-desc">Control de stock, alertas de productos bajos y gestión de lotes.</p></div>
+                <div class="feature-card"><div class="feature-icon"><i class="fas fa-cash-register"></i></div><h3 class="feature-title">Control de Cobros</h3><p class="feature-desc">Métodos de pago, depósitos de envases, cierres de ruta y reportes.</p></div>
             </div>
         </div>
     </section>
@@ -183,39 +266,120 @@
             <div class="pricing-grid">
                 <div class="pricing-card"><h3>Básico</h3><div class="pricing-price">$29<span>/mes</span></div><ul class="pricing-features"><li><i class="fas fa-check"></i> Hasta 500 pedidos/mes</li><li><i class="fas fa-check"></i> App para clientes</li><li><i class="fas fa-check"></i> Dashboard básico</li><li><i class="fas fa-check"></i> Soporte email</li></ul><button class="btn-primary" style="width:100%;" onclick="mostrarRegistro()">Comenzar</button></div>
                 <div class="pricing-card popular"><div class="popular-badge">Más popular</div><h3>Profesional</h3><div class="pricing-price">$59<span>/mes</span></div><ul class="pricing-features"><li><i class="fas fa-check"></i> Pedidos ilimitados</li><li><i class="fas fa-check"></i> App repartidores + GPS</li><li><i class="fas fa-check"></i> Reportes avanzados</li><li><i class="fas fa-check"></i> Inventario completo</li><li><i class="fas fa-check"></i> Soporte prioritario</li></ul><button class="btn-primary" style="width:100%;" onclick="mostrarRegistro()">Comenzar</button></div>
-                <div class="pricing-card"><h3>Empresarial</h3><div class="pricing-price">$99<span>/mes</span></div><ul class="pricing-features"><li><i class="fas fa-check"></i> Todo lo anterior</li><li><i class="fas fa-check"></i> Múltiples sucursales</li><li><i class="fas fa-check"></i> API personalizada</li><li><i class="fas fa-check"></i> Capacitación incluida</li><li><i class="fas fa-check"></i> Soporte 24/7</li></ul><button class="btn-primary" style="width:100%;" onclick="mostrarRegistro()">Contactar</button></div>
             </div>
         </div>
     </section>
 
     <div class="cta-section">
         <h2 class="cta-title">¿Listo para digitalizar tu negocio?</h2>
-        <p>Únete a más de 500 empresas que ya confían en AquaControl</p>
-        <button class="cta-button" onclick="mostrarRegistro()">Probar gratis 7 días</button>
+        <p>Centraliza pedidos, inventario, entregas y control de ruta en una sola aplicación.</p>
+        <button class="cta-button" onclick="mostrarRegistro()">Probar gratis 14 días</button>
     </div>
 
     <footer id="contacto" class="footer">
         <div class="footer-container">
-            <div class="footer-logo"><div class="logo"><span class="logo-icon">💧</span><span class="logo-text" style="-webkit-text-fill-color:white;">AquaControl</span></div><p style="margin-top:16px;">Software profesional para distribución de agua.</p><div class="footer-social"><a href="#"><i class="fab fa-facebook"></i></a><a href="#"><i class="fab fa-instagram"></i></a><a href="#"><i class="fab fa-whatsapp"></i></a><a href="#"><i class="fab fa-linkedin"></i></a></div></div>
-            <div><h4>Producto</h4><p><a href="#caracteristicas">Características</a></p><p><a href="#precios">Planes</a></p><p><a href="#">Descargas</a></p></div>
-            <div><h4>Soporte</h4><p><a href="#">Centro de ayuda</a></p><p><a href="#">Documentación</a></p><p><a href="#">Contacto</a></p></div>
-            <div><h4>Contacto</h4><p><i class="fas fa-envelope"></i> info@aquacontrol.com</p><p><i class="fas fa-phone"></i> +593 99 999 9999</p><p><i class="fas fa-map-marker-alt"></i> Quito, Ecuador</p></div>
+            <div class="footer-logo"><div class="logo"><span class="logo-icon"><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""></span><span class="logo-text" style="-webkit-text-fill-color:white;">AquaControl</span></div><p style="margin-top:16px;">Operación y distribución de agua en una sola plataforma.</p></div>
+            <div><h4>Producto</h4><p><a href="#caracteristicas">Características</a></p><p><a href="#precios">Planes</a></p><p><a href="#inicio" onclick="mostrarLogin()">Acceso</a></p></div>
+            <div><h4>Información</h4><p><a href="/legal/privacidad.html">Privacidad</a></p><p><a href="/legal/terminos.html">Términos</a></p></div>
         </div>
-        <div class="footer-bottom"><p>&copy; 2025 AquaControl - Todos los derechos reservados. SoftWave Solutions S.A.</p></div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 AquaControl. <a href="/legal/privacidad.html">Privacidad</a> · <a href="/legal/terminos.html">Términos</a></p>
+        </div>
     </footer>
 
-    <script>
+    <script nonce="{{CSP_NONCE}}">
         const API = '/api';
 
-        function mostrarLogin() { document.getElementById('loginModal').style.display = 'flex'; }
-        function mostrarRegistro() { document.getElementById('registerModal').style.display = 'flex'; }
-        function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
-        function cambiarARegistro() { cerrarModal('loginModal'); mostrarRegistro(); }
-        function cambiarALogin() { cerrarModal('registerModal'); mostrarLogin(); }
+        let registerMode = 'empresa';
+        let slugEdited = false;
 
-        async function loginCliente() {
-            const email = document.getElementById('loginEmail').value;
+        function mostrarLogin() { document.getElementById('loginModal').style.display = 'flex'; }
+        function mostrarRegistro(mode = 'empresa') {
+            setRegisterMode(mode);
+            document.getElementById('registerModal').style.display = 'flex';
+        }
+        function cerrarModal(id) { document.getElementById(id).style.display = 'none'; }
+        function cambiarARegistro() { cerrarModal('loginModal'); mostrarRegistro('empresa'); }
+        function cambiarALogin() { cerrarModal('registerModal'); mostrarLogin(); }
+        function mostrarRecuperacion() {
+            document.getElementById('recoveryEmail').value = document.getElementById('loginEmail').value;
+            cerrarModal('loginModal');
+            document.getElementById('recoveryModal').style.display = 'flex';
+        }
+
+        function mostrarEnlaceDesarrollo(container, url, label) {
+            if (!url || location.hostname !== 'localhost') return;
+            try {
+                const parsed = new URL(url);
+                if (parsed.origin !== location.origin) return;
+                const link = document.createElement('a');
+                link.href = parsed.href;
+                link.textContent = label;
+                link.style.display = 'block';
+                link.style.marginTop = '8px';
+                link.style.color = '#0077b6';
+                container.appendChild(link);
+            } catch (error) {
+                // Un enlace de desarrollo inválido no debe mostrarse.
+            }
+        }
+
+        function setRegisterMode(mode) {
+            registerMode = mode === 'cliente' ? 'cliente' : 'empresa';
+            const isEmpresa = registerMode === 'empresa';
+            document.getElementById('empresaFields').hidden = !isEmpresa;
+            document.getElementById('clienteFields').hidden = isEmpresa;
+            document.getElementById('registerTitle').textContent = isEmpresa
+                ? 'Crea tu distribuidora'
+                : 'Crea tu cuenta de cliente';
+            document.getElementById('registerButton').textContent = isEmpresa
+                ? 'Crear distribuidora'
+                : 'Crear cuenta';
+            document.getElementById('modeEmpresa').classList.toggle('active', isEmpresa);
+            document.getElementById('modeCliente').classList.toggle('active', !isEmpresa);
+            document.getElementById('modeEmpresa').setAttribute('aria-selected', String(isEmpresa));
+            document.getElementById('modeCliente').setAttribute('aria-selected', String(!isEmpresa));
+            document.getElementById('registerError').textContent = '';
+        }
+
+        function normalizarCodigo(value) {
+            return value
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .slice(0, 80);
+        }
+
+        const RUTAS_POR_ROL = {
+            admin: '/admin/',
+            repartidor: '/repartidor/',
+            cliente: '/cliente/app.html',
+            rh: '/equipo/',
+            jefe_planta: '/equipo/'
+        };
+
+        function abrirPanel(user) {
+            const ruta = RUTAS_POR_ROL[user.rol];
+            if (!ruta) throw new Error('Rol no reconocido');
+            sessionStorage.setItem('aquacontrol_user', JSON.stringify(user));
+            window.location.href = ruta;
+        }
+
+        async function loginUsuario() {
+            const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            const button = document.getElementById('loginButton');
+            errorDiv.textContent = '';
+            if (!email || !password) {
+                errorDiv.textContent = 'Ingresa tu correo y contraseña.';
+                return;
+            }
+            button.disabled = true;
+            button.textContent = 'Verificando...';
             try {
                 const res = await fetch(`${API}/auth/login`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -223,35 +387,273 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    localStorage.setItem('token', data.token);
-                    localStorage.setItem('userId', data.user.id);
-                    localStorage.setItem('userName', data.user.nombre);
-                    window.location.href = '/cliente/app.html';
-                } else alert('Credenciales inválidas');
-            } catch (error) { alert('Error de conexión'); }
+                    abrirPanel(data.user);
+                } else {
+                    errorDiv.textContent = data.error || 'Credenciales inválidas.';
+                    if (data.code === 'EMAIL_NOT_VERIFIED') {
+                        const resendButton = document.createElement('button');
+                        resendButton.type = 'button';
+                        resendButton.textContent = 'Reenviar verificación';
+                        resendButton.style.cssText = 'display:block;margin:8px auto 0;border:0;background:none;color:#0077b6;cursor:pointer;';
+                        resendButton.addEventListener('click', reenviarVerificacion);
+                        errorDiv.appendChild(resendButton);
+                    }
+                }
+            } catch (error) {
+                errorDiv.textContent = 'No se pudo conectar con el servidor.';
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Ingresar';
+            }
         }
 
-        async function registrarCliente() {
-            const nombre = document.getElementById('regNombre').value;
-            const email = document.getElementById('regEmail').value;
+        async function registrarCuenta() {
+            const nombre = document.getElementById('regNombre').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
             const password = document.getElementById('regPassword').value;
-            const telefono = document.getElementById('regTelefono').value;
+            const telefono = document.getElementById('regTelefono').value.trim();
+            const errorDiv = document.getElementById('registerError');
+            const button = document.getElementById('registerButton');
+            const isEmpresa = registerMode === 'empresa';
+            const empresa_slug = isEmpresa
+                ? document.getElementById('regEmpresaSlug').value.trim().toLowerCase()
+                : document.getElementById('regEmpresa').value.trim().toLowerCase();
+            const empresa_nombre = document.getElementById('regEmpresaNombre').value.trim();
+            errorDiv.textContent = '';
+            errorDiv.className = 'form-status error';
+
+            if (!nombre || !email || password.length < 10 || !empresa_slug || (isEmpresa && !empresa_nombre)) {
+                errorDiv.textContent = 'Completa los campos requeridos y usa una contraseña de al menos 10 caracteres.';
+                return;
+            }
+
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = 'Creando...';
             try {
-                const res = await fetch(`${API}/auth/register`, {
+                const endpoint = isEmpresa ? 'register-empresa' : 'register';
+                const payload = { nombre, email, password, telefono, empresa_slug };
+                if (isEmpresa) payload.empresa_nombre = empresa_nombre;
+                const res = await fetch(`${API}/auth/${endpoint}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nombre, email, password, telefono, rol: 'cliente' })
+                    body: JSON.stringify(payload)
                 });
+                const data = await res.json();
                 if (res.ok) {
-                    alert('Registro exitoso! Ahora inicia sesión');
-                    cerrarModal('registerModal');
+                    errorDiv.className = 'form-status success';
+                    errorDiv.textContent = data.message || 'Cuenta creada. Revisa tu correo.';
+                    mostrarEnlaceDesarrollo(errorDiv, data.development_url, 'Verificar ahora en modo local');
+                    document.getElementById('loginEmail').value = email;
+                } else {
+                    errorDiv.textContent = data.error || 'No fue posible crear la cuenta.';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'No se pudo conectar con el servidor.';
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+
+        async function reenviarVerificacion() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const container = document.getElementById('loginError');
+            if (!email) return;
+            const res = await fetch(`${API}/auth/resend-verification`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await res.json();
+            container.textContent = data.message || 'Solicitud procesada.';
+            mostrarEnlaceDesarrollo(container, data.development_url, 'Verificar ahora en modo local');
+        }
+
+        async function solicitarRecuperacion() {
+            const email = document.getElementById('recoveryEmail').value.trim();
+            const status = document.getElementById('recoveryStatus');
+            const button = document.getElementById('recoveryButton');
+            status.textContent = '';
+            if (!email) {
+                status.className = 'form-status error';
+                status.textContent = 'Escribe tu correo.';
+                return;
+            }
+            button.disabled = true;
+            try {
+                const res = await fetch(`${API}/auth/forgot-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                status.className = `form-status ${res.ok ? 'success' : 'error'}`;
+                status.textContent = data.message || data.error;
+                mostrarEnlaceDesarrollo(status, data.development_url, 'Restablecer ahora en modo local');
+            } catch (error) {
+                status.className = 'form-status error';
+                status.textContent = 'No se pudo conectar con el servidor.';
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function restablecerPassword() {
+            const password = document.getElementById('resetPassword').value;
+            const confirmation = document.getElementById('resetPasswordConfirm').value;
+            const status = document.getElementById('resetStatus');
+            const token = new URLSearchParams(location.search).get('reset_token');
+            if (password.length < 10 || password !== confirmation) {
+                status.className = 'form-status error';
+                status.textContent = 'Las contraseñas deben coincidir y tener al menos 10 caracteres.';
+                return;
+            }
+            const res = await fetch(`${API}/auth/reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, password })
+            });
+            const data = await res.json();
+            status.className = `form-status ${res.ok ? 'success' : 'error'}`;
+            status.textContent = data.message || data.error;
+            if (res.ok) {
+                history.replaceState({}, '', '/');
+                setTimeout(() => {
+                    cerrarModal('resetModal');
                     mostrarLogin();
-                } else alert('Error al registrar');
-            } catch (error) { alert('Error de conexión'); }
+                }, 1200);
+            }
+        }
+
+        function iniciarCarrusel() {
+            const carousel = document.getElementById('showcaseCarousel');
+            if (!carousel) return;
+            const slides = Array.from(carousel.querySelectorAll('.showcase-slide'));
+            const dots = Array.from(carousel.querySelectorAll('.showcase-dots button'));
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            let activeIndex = 0;
+            let timer = null;
+            let pointerStart = null;
+
+            const showSlide = (index) => {
+                activeIndex = (index + slides.length) % slides.length;
+                slides.forEach((slide, slideIndex) => {
+                    const isActive = slideIndex === activeIndex;
+                    slide.classList.toggle('is-active', isActive);
+                    slide.setAttribute('aria-hidden', String(!isActive));
+                });
+                dots.forEach((dot, dotIndex) => {
+                    const isActive = dotIndex === activeIndex;
+                    dot.classList.toggle('is-active', isActive);
+                    dot.setAttribute('aria-selected', String(isActive));
+                    dot.tabIndex = isActive ? 0 : -1;
+                });
+            };
+
+            const stopAutoplay = () => {
+                if (timer) window.clearInterval(timer);
+                timer = null;
+            };
+            const startAutoplay = () => {
+                stopAutoplay();
+                if (!reduceMotion && !document.hidden) {
+                    timer = window.setInterval(() => showSlide(activeIndex + 1), 6500);
+                }
+            };
+            const move = (direction) => {
+                showSlide(activeIndex + direction);
+                startAutoplay();
+            };
+
+            carousel.querySelector('.showcase-prev').addEventListener('click', () => move(-1));
+            carousel.querySelector('.showcase-next').addEventListener('click', () => move(1));
+            dots.forEach((dot, index) => dot.addEventListener('click', () => {
+                showSlide(index);
+                startAutoplay();
+            }));
+            carousel.addEventListener('keydown', (event) => {
+                if (event.key === 'ArrowLeft') move(-1);
+                if (event.key === 'ArrowRight') move(1);
+            });
+            carousel.addEventListener('mouseenter', stopAutoplay);
+            carousel.addEventListener('mouseleave', startAutoplay);
+            carousel.addEventListener('focusin', stopAutoplay);
+            carousel.addEventListener('focusout', () => window.setTimeout(() => {
+                if (!carousel.contains(document.activeElement)) startAutoplay();
+            }, 0));
+            carousel.addEventListener('pointerdown', (event) => { pointerStart = event.clientX; });
+            carousel.addEventListener('pointerup', (event) => {
+                if (pointerStart === null) return;
+                const distance = event.clientX - pointerStart;
+                pointerStart = null;
+                if (Math.abs(distance) >= 45) move(distance > 0 ? -1 : 1);
+            });
+            carousel.addEventListener('pointercancel', () => { pointerStart = null; });
+            document.addEventListener('visibilitychange', () => document.hidden ? stopAutoplay() : startAutoplay());
+
+            showSlide(0);
+            startAutoplay();
         }
 
         window.onclick = function(event) {
             if (event.target.classList.contains('modal')) event.target.style.display = 'none';
         }
+
+        document.getElementById('loginPassword').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') loginUsuario();
+        });
+
+        document.getElementById('regEmpresaNombre').addEventListener('input', (event) => {
+            if (!slugEdited) {
+                document.getElementById('regEmpresaSlug').value = normalizarCodigo(event.target.value);
+            }
+        });
+        document.getElementById('regEmpresaSlug').addEventListener('input', (event) => {
+            slugEdited = event.target.value.length > 0;
+            event.target.value = normalizarCodigo(event.target.value);
+        });
+        document.getElementById('regPassword').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') registrarCuenta();
+        });
+
+        iniciarCarrusel();
+
+        (async function iniciarEntrada() {
+            const params = new URLSearchParams(location.search);
+            const verificationToken = params.get('verify_token');
+            const resetToken = params.get('reset_token');
+            if (verificationToken) {
+                try {
+                    const res = await fetch(`${API}/auth/verify-email`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: verificationToken })
+                    });
+                    const data = await res.json();
+                    history.replaceState({}, '', '/');
+                    mostrarLogin();
+                    const container = document.getElementById('loginError');
+                    container.style.color = res.ok ? '#157347' : '#c62828';
+                    container.textContent = data.message || data.error;
+                } catch (error) {
+                    mostrarLogin();
+                    document.getElementById('loginError').textContent = 'No fue posible verificar el correo.';
+                }
+                return;
+            }
+            if (resetToken) {
+                document.getElementById('resetModal').style.display = 'flex';
+                return;
+            }
+            try {
+                const res = await fetch(`${API}/auth/me`);
+                if (!res.ok) return;
+                const data = await res.json();
+                abrirPanel(data.user);
+            } catch (error) {
+                // La portada sigue disponible cuando no hay una sesión activa.
+            }
+        })();
     </script>
 </body>
 </html>
