@@ -26,6 +26,7 @@ class SplashPage extends HookConsumerWidget {
 
       // Verificar sesión y redirigir
       Future.delayed(const Duration(seconds: 2), () {
+        if (!context.mounted) return;
         final authState = ref.read(authControllerProvider);
         final router = GoRouter.of(context);
         authState.when(
