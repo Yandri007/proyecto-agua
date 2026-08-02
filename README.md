@@ -1,5 +1,8 @@
 # AquaControl
 
+La aplicacion web operativa vive en `frontend/`. El cliente Flutter
+multiplataforma se mantiene por separado en `mobile/` y consume el mismo backend.
+
 AquaControl es una plataforma SaaS multiempresa para distribuidoras de agua.
 Una sola instalación atiende a todas las empresas y separa usuarios, productos,
 pedidos, inventario, auditoría y ubicaciones mediante `empresa_id`.

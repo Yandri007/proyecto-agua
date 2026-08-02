@@ -53,3 +53,10 @@ dist/
 build/
 *.exe
 *.dll
+
+# Herramientas locales de analisis
+.agents/
+.codegraph/
+
+# Compilaciones moviles
+mobile/build/

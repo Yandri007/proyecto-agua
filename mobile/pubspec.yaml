@@ -1,0 +1,52 @@
+name: aquacontrol
+description: "AquaControl - Sistema de gestión para distribuidoras de agua"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+
+  # Estado (Riverpod + Hooks)
+  flutter_riverpod: ^2.6.1
+  hooks_riverpod: ^2.6.1
+  flutter_hooks: ^0.21.2
+  riverpod_annotation: ^2.6.1
+
+  # Navegación
+  go_router: ^14.8.1
+
+  # HTTP & WebSocket
+  dio: ^5.7.0
+  socket_io_client: ^3.0.2
+
+  # Persistencia local
+  shared_preferences: ^2.5.3
+
+  # Gráficos
+  fl_chart: ^0.70.2
+
+  # Modelos (Freezed)
+  freezed_annotation: ^3.0.0
+  json_annotation: ^4.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # Generación de código
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.6.5
+  freezed: ^3.0.0
+  json_serializable: ^6.9.5
+
+flutter:
+  uses-material-design: true
