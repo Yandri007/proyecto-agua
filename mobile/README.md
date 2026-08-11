@@ -3,6 +3,10 @@
 Este cliente Flutter vive separado de la aplicacion web de produccion. Para
 compilar contra un backend desplegado, define ambas URL en el build:
 
+> Estado: experimental. La primera publicacion comercial incluye solo el SaaS
+> web. El cliente Flutter aun debe adaptar su persistencia de sesion al contrato
+> `HttpOnly` del backend antes de distribuirse a usuarios.
+
 ```bash
 flutter build apk --debug \
   --dart-define=API_BASE_URL=https://staging.example.com/api \

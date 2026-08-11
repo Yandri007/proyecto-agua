@@ -1,6 +1,6 @@
 # Estado de AquaControl
 
-Última actualización: 2 de agosto de 2026.
+Última actualización: 10 de agosto de 2026.
 
 ## Decisión de producto
 
@@ -97,15 +97,17 @@ El comando rechaza su ejecución en producción.
 
 ## Verificación realizada
 
-- `npm test`: 13 pruebas aprobadas.
+- `npm test`: 14 pruebas aprobadas.
 - `npm run check`: 7 interfaces y 5 scripts verificados.
 - `npm run test:integration`: identidad, recurrencias, módulos, personal, planta,
   flota, ventas, GPS, comprobantes, cierres, stock y sincronización de los cinco
   roles aprobados; incluye dos pedidos consecutivos a direcciones distintas,
   reporte semanal y verificación del nonce CSP.
-- `npm run test:load`: 120 solicitudes, concurrencia 10, 179.7 req/s, p95 de
-  311 ms y máximo de 406 ms en la prueba de humo local.
+- `npm run test:load`: 120 solicitudes, concurrencia 10, 200.5 req/s, p95 de
+  373 ms y máximo de 541 ms en la prueba de humo local.
 - `npm audit --omit=dev`: 0 vulnerabilidades conocidas.
+- `npm run test:deployment`: login, cookie, Socket.IO, CSP y cabeceras de
+  seguridad aprobados contra el servidor local.
 - `npm run preflight`: verificador de requisitos de publicación implementado y
   probado con escenarios bloqueado y aprobado.
 - Pruebas HTTP de origen: cookie sin origen `403`, origen externo `403` y mismo
@@ -117,9 +119,23 @@ El comando rechaza su ejecución en producción.
 
 Docker no pudo ejecutarse porque no está instalado en esta máquina.
 
+## Pendientes para staging público
+
+- Aprobar y fusionar el PR de publicación en `main` con GitHub Actions en verde.
+- Guardar la `DATABASE_URL` completa de Supabase y `RESEND_API_KEY` en Render.
+- Crear el Blueprint de Render y ejecutar `npm run test:deployment` contra su
+  URL HTTPS.
+- Probar el correo de verificación y recuperación con la cuenta propietaria de
+  Resend. El dominio `resend.dev` no permite enviar a terceros.
+
+El cliente Flutter de `mobile/` es experimental y no forma parte de este primer
+staging. Su autenticación debe adaptarse a la sesión `HttpOnly` antes de
+distribuir binarios.
+
 ## Pendientes para lanzamiento comercial
 
-- Contratar dominio, HTTPS, hosting y PostgreSQL administrado.
+- Contratar dominio propio; Render ya proporcionará hosting y HTTPS, y Supabase
+  proporcionará PostgreSQL administrado.
 - Configurar almacenamiento externo y probar una restauración aislada.
 - Verificar dominio y remitente en Resend.
 - Completar afiliación, UAT y certificación de Kushki Ecuador.
@@ -131,10 +147,9 @@ Docker no pudo ejecutarse porque no está instalado en esta máquina.
 - Completar una revisión visual en navegador de escritorio y móvil; el navegador
   integrado no estuvo disponible durante esta sesión.
 
-La configuración local actual no debe publicarse. El preflight detecta nueve
-requisitos pendientes: modo producción, dominio HTTPS, origen autorizado, SSL y
-contraseña robusta de PostgreSQL, token de monitoreo, Resend y credenciales de
-producción de Kushki. Una configuración simulada completa aprobó el comando.
+La configuración local no debe copiarse a producción. `npm run check:env`
+aprueba una configuración simulada de Render y el preflight mantiene bloqueado
+el lanzamiento comercial hasta configurar correo, dominio y Kushki reales.
 
 ## Archivos de referencia
 
@@ -148,6 +163,6 @@ producción de Kushki. Una configuración simulada completa aprobó el comando.
 
 ## Estado de trabajo
 
-Los cambios están en el árbol de trabajo local y todavía no se han confirmado
-en Git. Antes de publicar se debe revisar el diff, crear un commit intencional
-y desplegar únicamente después de configurar los servicios externos.
+La preparación se mantiene en el PR `#2`. Solo debe fusionarse después de que
+las comprobaciones web y Flutter terminen en verde. El despliegue de Render se
+realizará desde `main` y recibirá los secretos directamente en su panel.

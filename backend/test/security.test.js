@@ -32,6 +32,10 @@ test('isAllowedOrigin rechaza un sitio externo', () => {
   );
 });
 
+test('isAllowedOrigin permite clientes nativos sin encabezado Origin', () => {
+  assert.equal(isAllowedOrigin(undefined, 'localhost:3000'), true);
+});
+
 test('normalizeSlug produce códigos de empresa estables y seguros', () => {
   assert.equal(normalizeSlug('Agua Rápida Quito S.A.'), 'agua-rapida-quito-s-a');
   assert.equal(normalizeSlug('  DISTRIBUIDORA---CENTRO  '), 'distribuidora-centro');

@@ -29,6 +29,16 @@ const verifyHtml = async (path) => {
   assert.ok(nonce, `${path} no contiene nonce CSP`);
   assert.ok(csp.includes(`'nonce-${nonce}'`), `${path} no coincide con la CSP`);
   assert.ok(!html.includes('{{CSP_NONCE}}'), `${path} expuso el marcador CSP`);
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.ok(response.headers.get('x-frame-options'), `${path} no protege contra iframes`);
+  assert.ok(response.headers.get('referrer-policy'), `${path} no define Referrer-Policy`);
+  if (!allowInsecureLocal) {
+    assert.match(
+      response.headers.get('strict-transport-security') || '',
+      /max-age=31536000/i,
+      `${path} no exige HTTPS con HSTS`
+    );
+  }
   return nonce;
 };
 

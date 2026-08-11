@@ -1,6 +1,6 @@
 # Auditoría técnica de seguridad
 
-Fecha: 2 de agosto de 2026.
+Fecha: 10 de agosto de 2026.
 
 ## Resultado
 
@@ -33,16 +33,20 @@ penetración independiente.
 
 ## Evidencia ejecutada
 
-- `npm test`: 13 de 13 pruebas aprobadas.
+- `npm test`: 14 de 14 pruebas aprobadas.
 - `npm run check`: 7 HTML y 5 scripts verificados.
 - `npm run test:integration`: identidad, recurrencias, módulos, personal,
   planta, flota, ventas, GPS, comprobantes, cierres, stock y eventos en tiempo
   real para administrador, cliente, repartidor, RH y jefe de planta aprobados.
   Incluye dos pedidos consecutivos del mismo cliente a direcciones distintas y
   el reporte de ventas por día de semana.
-- `npm run test:load`: 120 solicitudes con concurrencia 10, 179.7 req/s, p95 de
-  311 ms y máximo de 406 ms en el equipo local.
+- `npm run test:load`: 120 solicitudes con concurrencia 10, 200.5 req/s, p95 de
+  373 ms y máximo de 541 ms en el equipo local.
 - `npm audit --omit=dev`: 0 vulnerabilidades conocidas.
+- Se actualizaron `socket.io-parser` a 4.2.7 e `ip-address` a 10.5.0 para
+  corregir avisos de severidad alta publicados después de la auditoría inicial.
+- `npm run test:deployment`: CSP, nonce, `X-Content-Type-Options`, protección de
+  marcos, `Referrer-Policy`, sesión y Socket.IO aprobados localmente.
 - Mutación con cookie sin `Origin` o `Referer`: `403`.
 - Mutación desde origen externo: `403`.
 - Mutación desde el mismo origen: `200`.

@@ -13,6 +13,7 @@
     "test:deployment": "node scripts/deployment-smoke-test.js",
     "db:init": "node scripts/initialize-database.js",
     "preflight": "node scripts/release-preflight.js",
+    "check:env": "node scripts/validate-deploy-env.js",
     "preflight:staging": "node scripts/release-preflight.js --staging",
     "backup": "node scripts/backup-database.js",
     "restore": "node scripts/restore-database.js",

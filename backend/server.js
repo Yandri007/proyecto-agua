@@ -31,6 +31,7 @@ const app = express();
 const server = http.createServer(app);
 
 const isAllowedOrigin = (origin, host) => {
+  // Native clients do not always send Origin. Cookie mutations still pass the CSRF guard below.
   if (!origin) return true;
   try {
     const parsed = new URL(origin);
@@ -58,8 +59,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Build dynamic CSP connect sources including configured app URL and allowed origins
+const cspConnectSrc = [
+  "'self'",
+  'ws:',
+  'wss:',
+  'https://api-uat.kushkipagos.com',
+  'https://api.kushkipagos.com',
+  'https://*.kushkipagos.com'
+];
+if (env.appUrl) cspConnectSrc.push(env.appUrl);
+for (const o of env.allowedOrigins) {
+  if (o && !cspConnectSrc.includes(o)) cspConnectSrc.push(o);
+}
+
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
+  strictTransportSecurity: env.nodeEnv === 'production'
+    ? { maxAge: 31536000, includeSubDomains: false, preload: false }
+    : false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -83,14 +101,7 @@ app.use(helmet({
         'https://tile.openstreetmap.org',
         'https://*.kushkipagos.com'
       ],
-      connectSrc: [
-        "'self'",
-        'ws:',
-        'wss:',
-        'https://api-uat.kushkipagos.com',
-        'https://api.kushkipagos.com',
-        'https://*.kushkipagos.com'
-      ],
+      connectSrc: cspConnectSrc,
       objectSrc: ["'none'"],
       frameSrc: ["'self'", 'https://*.kushkipagos.com'],
       frameAncestors: ["'none'"],
@@ -116,9 +127,10 @@ app.use((req, res, next) => cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 })(req, res, next));
 
+// Global rate limiter (keeps default generous but safer than unlimited)
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 1000,
+  limit: 300,
   standardHeaders: true,
   legacyHeaders: false
 }));

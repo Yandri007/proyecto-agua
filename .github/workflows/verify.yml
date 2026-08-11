@@ -45,10 +45,10 @@ jobs:
 
     steps:
       - name: Descargar codigo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configurar Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -56,6 +56,18 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Validar configuracion de despliegue
+        env:
+          NODE_ENV: production
+          RENDER_EXTERNAL_URL: https://aquacontrol-ci.onrender.com
+          DATABASE_URL: postgresql://aquacontrol:ci-database-password-2026@localhost:5432/aquacontrol
+          DB_SSL: "true"
+          MONITORING_TOKEN: ci-monitoring-token-with-32-characters
+          RESEND_API_KEY: re_ci_only
+          EMAIL_FROM: AquaControl <onboarding@resend.dev>
+          ALLOW_DATABASE_RESTORE: "false"
+        run: npm run check:env
 
       - name: Verificar frontend
         run: npm run check

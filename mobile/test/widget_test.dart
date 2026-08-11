@@ -12,7 +12,7 @@ void main() {
       ),
     );
     // Verificar que la app carga sin errores
-    expect(find.byType(MaterialApp), findsNothing); // usa MaterialApp.router
+    expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(Router), findsOneWidget);
   });
 }
