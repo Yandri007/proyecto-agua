@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
@@ -7,8 +9,8 @@ import '../logic/auth_logic.dart';
 import '../routes/app_routes.dart';
 import '../themes/app_colors.dart';
 
-/// Splash screen con animación del logo de AquaControl.
-/// Redirige automáticamente según la sesión almacenada.
+/// Splash screen con animacion del logo de AquaControl.
+/// Redirige automaticamente segun la sesion almacenada.
 class SplashPage extends HookConsumerWidget {
   const SplashPage({super.key});
 
@@ -18,14 +20,14 @@ class SplashPage extends HookConsumerWidget {
     final scale = useState(0.5);
 
     useEffect(() {
-      // Iniciar animación
-      Future.delayed(const Duration(milliseconds: 100), () {
+      Timer? loadingTimer;
+      final animationTimer = Timer(const Duration(milliseconds: 100), () {
+        if (!context.mounted) return;
         opacity.value = 1.0;
         scale.value = 1.0;
       });
 
-      // Verificar sesión y redirigir
-      Future.delayed(const Duration(seconds: 2), () {
+      final redirectTimer = Timer(const Duration(seconds: 2), () {
         if (!context.mounted) return;
         final authState = ref.read(authControllerProvider);
         final router = GoRouter.of(context);
@@ -38,7 +40,8 @@ class SplashPage extends HookConsumerWidget {
             }
           },
           loading: () {
-            Future.delayed(const Duration(seconds: 1), () {
+            loadingTimer = Timer(const Duration(seconds: 1), () {
+              if (!context.mounted) return;
               router.go(AppRoutes.login);
             });
           },
@@ -46,7 +49,11 @@ class SplashPage extends HookConsumerWidget {
         );
       });
 
-      return null;
+      return () {
+        animationTimer.cancel();
+        redirectTimer.cancel();
+        loadingTimer?.cancel();
+      };
     }, const []);
 
     return Scaffold(
@@ -65,7 +72,6 @@ class SplashPage extends HookConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo animado
                   Container(
                     width: 120,
                     height: 120,
@@ -73,11 +79,10 @@ class SplashPage extends HookConsumerWidget {
                       color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Center(
-                      child: Text(
-                        '💧',
-                        style: TextStyle(fontSize: 64),
-                      ),
+                    child: const Icon(
+                      Icons.water_drop_rounded,
+                      size: 64,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -87,12 +92,11 @@ class SplashPage extends HookConsumerWidget {
                       fontSize: 36,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
-                      letterSpacing: -1,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Gestión inteligente de agua',
+                    'Gestion inteligente de agua',
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.white.withValues(alpha: 0.8),

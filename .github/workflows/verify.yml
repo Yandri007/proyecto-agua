@@ -96,3 +96,7 @@ jobs:
           npm run test:integration
           npm run seed:demo
           npm run test:load
+
+      - name: Construir imagen Docker de produccion
+        working-directory: ${{ github.workspace }}
+        run: docker build --tag aquacontrol-ci .
