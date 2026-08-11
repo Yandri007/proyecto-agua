@@ -12,7 +12,7 @@ void main() {
       ),
     );
     // Verificar que la app carga sin errores
-    expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.byType(Router), findsOneWidget);
+    final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(materialApp.routerConfig, isNotNull);
   });
 }
