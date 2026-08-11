@@ -117,7 +117,8 @@ El comando rechaza su ejecución en producción.
 - Las cinco cuentas demo respondieron `200` y devolvieron el rol correcto.
 - Servidor local comprobado en `http://localhost:3000`.
 
-Docker no pudo ejecutarse porque no está instalado en esta máquina.
+Docker no está instalado en esta máquina, pero GitHub Actions construyó
+correctamente la imagen de producción definida por el `Dockerfile`.
 
 ## Pendientes para staging público
 
@@ -163,6 +164,7 @@ el lanzamiento comercial hasta configurar correo, dominio y Kushki reales.
 
 ## Estado de trabajo
 
-La preparación se mantiene en el PR `#2`. Solo debe fusionarse después de que
-las comprobaciones web y Flutter terminen en verde. El despliegue de Render se
-realizará desde `main` y recibirá los secretos directamente en su panel.
+La preparación se mantiene en el PR `#2`, está fusionable y todas las
+comprobaciones web, Docker, Android, Linux y Windows terminaron en verde. El
+despliegue de Render se realizará desde `main` y recibirá los secretos
+directamente en su panel.
