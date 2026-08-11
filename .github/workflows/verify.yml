@@ -61,6 +61,8 @@ jobs:
         env:
           NODE_ENV: production
           RENDER_EXTERNAL_URL: https://aquacontrol-ci.onrender.com
+          APP_URL: https://aquacontrol-ci.onrender.com
+          ALLOWED_ORIGINS: https://aquacontrol-ci.onrender.com
           DATABASE_URL: postgresql://aquacontrol:ci-database-password-2026@localhost:5432/aquacontrol
           DB_SSL: "true"
           MONITORING_TOKEN: ci-monitoring-token-with-32-characters
