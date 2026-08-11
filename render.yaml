@@ -2,7 +2,7 @@ services:
   - type: web
     name: aquacontrol-saas
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     maxShutdownDelaySeconds: 30

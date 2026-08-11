@@ -10,8 +10,12 @@
   operativa no se ejecuta en Vercel Functions para evitar limites de duracion y
   distribucion de conexiones WebSocket entre instancias.
 
-Para staging se usa una instancia Render `starter`. El plan gratuito se duerme
-tras periodos sin trafico y perjudicaria el GPS, los avisos y la primera carga.
+Para las primeras pruebas se usa una instancia Render `free`. No genera costo,
+pero se duerme despues de 15 minutos sin solicitudes HTTP ni mensajes WebSocket
+y puede tardar cerca de un minuto en responder al reactivarse. Mientras una ruta
+envie ubicaciones por WebSocket, ese trafico mantiene activo el servicio. Esta
+modalidad sirve para demostraciones y pilotos controlados, no para ofrecer un
+acuerdo de disponibilidad a clientes.
 
 ## 1. Crear el proyecto Supabase
 
@@ -43,7 +47,7 @@ cuenta. Para probar con terceros se debe verificar un dominio y configurar
 2. En Render, seleccionar `New > Blueprint` y conectar el repositorio.
 3. Render detectara `render.yaml` y creara `aquacontrol-saas`.
 4. Introducir `DATABASE_URL` y `RESEND_API_KEY` cuando el Blueprint los pida.
-5. Confirmar el plan `starter` y desplegar.
+5. Confirmar el plan `free` y desplegar. No seleccionar una instancia de pago.
 
 Render genera `JWT_SECRET` y `MONITORING_TOKEN`. La aplicacion toma
 automaticamente `RENDER_EXTERNAL_URL` como `APP_URL` y origen autorizado. Cuando
