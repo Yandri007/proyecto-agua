@@ -1,0 +1,102 @@
+name: Verificar AquaControl
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aquacontrol
+          POSTGRES_USER: aquacontrol
+          POSTGRES_PASSWORD: ci-aquacontrol-password-2026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aquacontrol -d aquacontrol"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: development
+      PORT: 3000
+      APP_URL: http://localhost:3000
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: aquacontrol
+      DB_USER: aquacontrol
+      DB_PASSWORD: ci-aquacontrol-password-2026
+      DB_SSL: "false"
+      JWT_SECRET: ci-jwt-secret-with-more-than-thirty-two-characters
+      DEFAULT_EMPRESA_NAME: AquaControl CI
+      DEFAULT_EMPRESA_SLUG: aquacontrol-ci
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v6
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Validar configuracion de despliegue
+        env:
+          NODE_ENV: production
+          RENDER_EXTERNAL_URL: https://aquacontrol-ci.onrender.com
+          APP_URL: https://aquacontrol-ci.onrender.com
+          ALLOWED_ORIGINS: https://aquacontrol-ci.onrender.com
+          DATABASE_URL: postgresql://aquacontrol:ci-database-password-2026@localhost:5432/aquacontrol
+          DB_SSL: "true"
+          MONITORING_TOKEN: ci-monitoring-token-with-32-characters
+          RESEND_API_KEY: re_ci_only
+          EMAIL_FROM: AquaControl <onboarding@resend.dev>
+          ALLOW_DATABASE_RESTORE: "false"
+        run: npm run check:env
+
+      - name: Verificar frontend
+        run: npm run check
+
+      - name: Ejecutar pruebas unitarias
+        run: npm test
+
+      - name: Ejecutar integracion y carga local
+        shell: bash
+        run: |
+          npm start > /tmp/aquacontrol-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:3000/api/health > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/aquacontrol-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          npm run test:integration
+          npm run seed:demo
+          npm run test:load
+
+      - name: Construir imagen Docker de produccion
+        working-directory: ${{ github.workspace }}
+        run: docker build --tag aquacontrol-ci .

@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaControl - Equipo</title>
+    <link rel="stylesheet" href="/assets/inter.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/assets/safe-ui.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Inter, sans-serif; background: #f5f7fa; color: #172033; }
+        button, input, select, textarea { font: inherit; }
+        .loading { max-width: 420px; margin: 100px auto; text-align: center; }
+        .app { display: none; min-height: 100vh; }
+        aside { position: fixed; inset: 0 auto 0 0; width: 250px; background: #17324d; color: white; padding: 24px 18px; }
+        aside h1 { margin: 0 0 4px; font-size: 22px; }
+        aside p { color: #bdd0df; font-size: 12px; margin: 0 0 24px; }
+        nav button { width: 100%; display: flex; gap: 10px; align-items: center; padding: 12px; color: #d9e7f2; background: transparent; border: 0; border-radius: 6px; cursor: pointer; text-align: left; }
+        nav button.active, nav button:hover { background: #245274; color: white; }
+        .logout { position: absolute; left: 18px; right: 18px; bottom: 22px; }
+        main { margin-left: 250px; padding: 24px; }
+        header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 22px; }
+        header h2 { margin: 0; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        .toolbar { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+        .button { border: 0; border-radius: 6px; padding: 10px 14px; cursor: pointer; font-weight: 600; background: #087ea4; color: white; }
+        .button.secondary { background: #e5eef4; color: #16445f; }
+        .button.danger { background: #fee2e2; color: #991b1b; }
+        .button.success { background: #dcfce7; color: #166534; }
+        .button:disabled { opacity: .55; cursor: not-allowed; }
+        .surface { background: white; border: 1px solid #dce3eb; border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
+        .surface h3 { padding: 18px; margin: 0; border-bottom: 1px solid #e8edf2; font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid #edf0f4; font-size: 13px; vertical-align: top; }
+        th { background: #f8fafc; color: #4b5563; }
+        .muted { color: #667085; font-size: 12px; margin-top: 4px; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; background: #e0f2fe; color: #075985; }
+        .form { padding: 18px; }
+        .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        label { display: flex; flex-direction: column; gap: 6px; color: #4b5563; font-size: 12px; font-weight: 600; }
+        label.full { grid-column: 1 / -1; }
+        input, select, textarea { width: 100%; border: 1px solid #cbd5df; border-radius: 6px; padding: 10px; background: white; }
+        dialog { border: 0; border-radius: 8px; padding: 0; width: min(620px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+        dialog::backdrop { background: rgba(13, 32, 51, .55); }
+        .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+        .toast { position: fixed; right: 24px; bottom: 24px; padding: 12px 18px; border-radius: 6px; color: white; background: #15803d; z-index: 10; }
+        .toast.error { background: #b91c1c; }
+        @media (max-width: 820px) { aside { position: static; width: auto; } .logout { position: static; margin-top: 20px; } main { margin: 0; padding: 16px; } nav { display: flex; gap: 8px; } nav button { width: auto; } .grid { grid-template-columns: 1fr; } label.full { grid-column: auto; } .surface { overflow-x: auto; } }
+    </style>
+    <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
+</head>
+<body class="aq-app aq-team">
+    <div id="loading" class="loading"><h2>Verificando acceso</h2><p id="loadingMessage">Preparando el espacio de trabajo.</p></div>
+    <div id="app" class="app">
+        <aside>
+            <h1><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> AquaControl</h1>
+            <p id="empresaNombre"></p>
+            <nav>
+                <button id="menuEquipo" onclick="mostrarPanel('equipo')"><i class="fas fa-users"></i> Equipo</button>
+                <button id="menuPlanta" onclick="mostrarPanel('planta')"><i class="fas fa-industry"></i> Planta</button>
+            </nav>
+            <button class="button secondary logout" onclick="logout()"><i class="fas fa-right-from-bracket"></i> Salir</button>
+        </aside>
+        <main>
+            <header><div><h2 id="tituloPanel">Equipo</h2><div class="muted" id="usuarioActual"></div></div><span id="equipoLiveStatus" class="aq-live-status">En línea</span></header>
+
+            <section id="panelEquipo" class="panel">
+                <div class="toolbar"><div></div><button class="button" onclick="abrirNuevoEmpleado()"><i class="fas fa-user-plus"></i> Nueva cuenta</button></div>
+                <div class="surface"><h3>Directorio laboral</h3><table><thead><tr><th>Colaborador</th><th>Cargo</th><th>Área</th><th>Contrato</th><th>Estado</th><th></th></tr></thead><tbody id="equipoBody"></tbody></table></div>
+                <div id="editorPerfil" class="surface" style="display:none"><h3>Perfil laboral</h3><form class="form" onsubmit="guardarPerfil(event)"><input id="perfilId" type="hidden"><div class="grid">
+                    <label>Cargo<input id="perfilCargo" maxlength="100" required></label>
+                    <label>Área<select id="perfilArea"></select></label>
+                    <label>Fecha de ingreso<input id="perfilFecha" type="date"></label>
+                    <label>Contrato<select id="perfilContrato"><option value="">Sin especificar</option><option value="indefinido">Indefinido</option><option value="temporal">Temporal</option><option value="servicios">Servicios</option><option value="otro">Otro</option></select></label>
+                    <label>Estado<select id="perfilEstado"><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></label>
+                    <label class="full">Notas<textarea id="perfilNotas" maxlength="500" rows="3"></textarea></label>
+                </div><div class="dialog-actions"><button type="button" class="button secondary" onclick="cerrarEditor()">Cancelar</button><button class="button" type="submit">Guardar perfil</button></div></form></div>
+            </section>
+
+            <section id="panelPlanta" class="panel">
+                <div class="surface"><h3>Nuevo lote de producción</h3><form class="form" onsubmit="crearLote(event)"><div class="grid">
+                    <label>Código<input id="loteCodigo" maxlength="60" required></label>
+                    <label>Producto<select id="loteProducto" required></select></label>
+                    <label>Cantidad<input id="loteCantidad" type="number" min="1" max="1000000" required></label>
+                    <label>Fecha<input id="loteFecha" type="date" required></label>
+                    <label class="full">Observaciones<textarea id="loteObservaciones" maxlength="500" rows="2"></textarea></label>
+                </div><div class="dialog-actions"><button class="button" type="submit">Crear lote</button></div></form></div>
+                <div class="surface"><h3>Lotes y calidad</h3><table><thead><tr><th>Lote</th><th>Producto</th><th>Cantidad</th><th>Estado</th><th>Calidad</th><th>Acciones</th></tr></thead><tbody id="lotesBody"></tbody></table></div>
+            </section>
+        </main>
+    </div>
+
+    <dialog id="nuevoEmpleadoDialog"><form class="form" onsubmit="crearEmpleado(event)"><h3>Nueva cuenta laboral</h3><div class="grid">
+        <label>Nombre<input id="nuevoNombre" maxlength="100" required></label>
+        <label>Correo<input id="nuevoEmail" type="email" maxlength="160" required></label>
+        <label>Contraseña temporal<input id="nuevoPassword" type="password" minlength="10" maxlength="128" required></label>
+        <label>Acceso<select id="nuevoRol"><option value="rh">RR. HH.</option><option value="jefe_planta">Jefatura de planta</option></select></label>
+        <label>Cargo<input id="nuevoCargo" maxlength="100" required></label>
+        <label>Área<select id="nuevoArea"></select></label>
+        <label>Teléfono<input id="nuevoTelefono" maxlength="20"></label>
+        <label>Fecha de ingreso<input id="nuevoFecha" type="date"></label>
+        <label>Contrato<select id="nuevoContrato"><option value="">Sin especificar</option><option value="indefinido">Indefinido</option><option value="temporal">Temporal</option><option value="servicios">Servicios</option><option value="otro">Otro</option></select></label>
+    </div><div class="dialog-actions"><button type="button" class="button secondary" onclick="nuevoEmpleadoDialog.close()">Cancelar</button><button class="button" type="submit">Crear</button></div></form></dialog>
+
+    <script nonce="{{CSP_NONCE}}">
+        const API = '/api';
+        const { escapeHtml, showToast, requestJson } = AquaUI;
+        const areas = ['Administración', 'Recursos Humanos', 'Planta', 'Calidad', 'Mantenimiento', 'Bodega', 'Distribución', 'Ventas', 'Contabilidad'];
+        let usuario = null;
+        let modulos = {};
+        let equipo = [];
+        let productos = [];
+        let socket = null;
+        let equipoRefreshTimer = null;
+
+        function refrescarPanelActual() {
+            if (document.hidden) return;
+            clearTimeout(equipoRefreshTimer);
+            equipoRefreshTimer = setTimeout(() => {
+                if (document.getElementById('panelEquipo').classList.contains('active')) cargarEquipo();
+                if (document.getElementById('panelPlanta').classList.contains('active')) cargarPlanta();
+            }, 250);
+        }
+
+        function conectarTiempoReal() {
+            if (socket) return;
+            socket = io();
+            const liveStatus = document.getElementById('equipoLiveStatus');
+            socket.on('connect', () => {
+                liveStatus.classList.remove('offline');
+                liveStatus.textContent = 'En línea';
+                refrescarPanelActual();
+            });
+            socket.on('disconnect', () => {
+                liveStatus.classList.add('offline');
+                liveStatus.textContent = 'Reconectando';
+            });
+            socket.on('connect_error', () => {
+                liveStatus.classList.add('offline');
+                liveStatus.textContent = 'Sin conexión';
+            });
+            socket.on('operacion_actualizada', (data) => {
+                if (['/api/organizacion', '/api/productos', '/api/inventario'].includes(data.recurso)) {
+                    refrescarPanelActual();
+                }
+            });
+            document.addEventListener('aquacontrol:reconnected', refrescarPanelActual);
+            setInterval(refrescarPanelActual, 30000);
+        }
+
+        const llenarAreas = () => {
+            const options = areas.map(area => `<option>${escapeHtml(area)}</option>`).join('');
+            document.getElementById('perfilArea').innerHTML = options;
+            document.getElementById('nuevoArea').innerHTML = options;
+        };
+
+        async function iniciar() {
+            try {
+                const data = await requestJson(`${API}/auth/me`);
+                if (!['rh', 'jefe_planta'].includes(data.user.rol)) throw new Error('Acceso no autorizado');
+                usuario = data.user;
+                AquaUI.startSessionGuard(['rh', 'jefe_planta'], usuario.id);
+                modulos = usuario.empresa.modulos || {};
+                if ((usuario.rol === 'rh' && !modulos.recursos_humanos) || (usuario.rol === 'jefe_planta' && !modulos.planta)) throw new Error('El módulo de tu cargo está deshabilitado');
+                llenarAreas();
+                document.getElementById('empresaNombre').textContent = usuario.empresa.nombre;
+                document.getElementById('usuarioActual').textContent = `${usuario.nombre} · ${usuario.rol === 'rh' ? 'Recursos Humanos' : 'Jefatura de planta'}`;
+                document.getElementById('menuEquipo').style.display = usuario.rol === 'rh' ? 'flex' : 'none';
+                document.getElementById('menuPlanta').style.display = usuario.rol === 'jefe_planta' ? 'flex' : 'none';
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                conectarTiempoReal();
+                mostrarPanel(usuario.rol === 'rh' ? 'equipo' : 'planta');
+            } catch (error) {
+                document.getElementById('loadingMessage').textContent = error.message;
+                setTimeout(() => { location.href = '/'; }, 1800);
+            }
+        }
+
+        function mostrarPanel(panel) {
+            document.querySelectorAll('.panel').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(item => item.classList.remove('active'));
+            document.getElementById(`panel${panel[0].toUpperCase()}${panel.slice(1)}`).classList.add('active');
+            document.getElementById(`menu${panel[0].toUpperCase()}${panel.slice(1)}`).classList.add('active');
+            document.getElementById('tituloPanel').textContent = panel === 'equipo' ? 'Gestión de equipo' : 'Planta y calidad';
+            if (panel === 'equipo') cargarEquipo(); else cargarPlanta();
+        }
+
+        async function cargarEquipo() {
+            try {
+                equipo = await requestJson(`${API}/organizacion/equipo`);
+                document.getElementById('equipoBody').innerHTML = equipo.map(persona => `<tr>
+                    <td><strong>${escapeHtml(persona.nombre)}</strong><div class="muted">${escapeHtml(persona.email)}</div></td>
+                    <td>${escapeHtml(persona.cargo || '-')}</td><td>${escapeHtml(persona.area || '-')}</td><td>${escapeHtml(persona.tipo_contrato || '-')}</td><td><span class="badge">${escapeHtml(persona.estado)}</span></td>
+                    <td>${persona.rol === 'admin' ? '' : `<button class="button secondary" onclick="editarPerfil(${persona.id})" title="Editar perfil"><i class="fas fa-pen"></i></button>`}</td></tr>`).join('');
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        function editarPerfil(id) {
+            const persona = equipo.find(item => item.id === id);
+            if (!persona) return;
+            document.getElementById('perfilId').value = persona.id;
+            document.getElementById('perfilCargo').value = persona.cargo || '';
+            document.getElementById('perfilArea').value = persona.area || 'Administración';
+            document.getElementById('perfilFecha').value = persona.fecha_ingreso ? persona.fecha_ingreso.slice(0, 10) : '';
+            document.getElementById('perfilContrato').value = persona.tipo_contrato || '';
+            document.getElementById('perfilEstado').value = persona.estado;
+            document.getElementById('perfilNotas').value = persona.notas || '';
+            document.getElementById('editorPerfil').style.display = 'block';
+            document.getElementById('editorPerfil').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function cerrarEditor() { document.getElementById('editorPerfil').style.display = 'none'; }
+
+        async function guardarPerfil(event) {
+            event.preventDefault();
+            try {
+                await requestJson(`${API}/organizacion/equipo/${document.getElementById('perfilId').value}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                    cargo: document.getElementById('perfilCargo').value.trim(), area: document.getElementById('perfilArea').value,
+                    fecha_ingreso: document.getElementById('perfilFecha').value, tipo_contrato: document.getElementById('perfilContrato').value,
+                    estado: document.getElementById('perfilEstado').value, notas: document.getElementById('perfilNotas').value.trim()
+                }) });
+                showToast('Perfil actualizado', 'success'); cerrarEditor(); cargarEquipo();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        function abrirNuevoEmpleado() {
+            [...document.getElementById('nuevoRol').options].forEach(option => { option.disabled = option.value === 'rh' ? !modulos.recursos_humanos : !modulos.planta; });
+            const first = [...document.getElementById('nuevoRol').options].find(option => !option.disabled);
+            if (!first) return showToast('No hay módulos habilitados para nuevas cuentas', 'error');
+            document.getElementById('nuevoRol').value = first.value;
+            document.getElementById('nuevoEmpleadoDialog').showModal();
+        }
+
+        async function crearEmpleado(event) {
+            event.preventDefault();
+            try {
+                const response = await requestJson(`${API}/organizacion/equipo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+                    nombre: document.getElementById('nuevoNombre').value.trim(), email: document.getElementById('nuevoEmail').value.trim(), password: document.getElementById('nuevoPassword').value,
+                    telefono: document.getElementById('nuevoTelefono').value.trim(), rol: document.getElementById('nuevoRol').value, cargo: document.getElementById('nuevoCargo').value.trim(),
+                    area: document.getElementById('nuevoArea').value, fecha_ingreso: document.getElementById('nuevoFecha').value, tipo_contrato: document.getElementById('nuevoContrato').value
+                }) });
+                document.getElementById('nuevoEmpleadoDialog').close(); event.target.reset(); showToast('Cuenta creada', 'success');
+                if (response.development_url) prompt('Enlace local de verificación', response.development_url);
+                cargarEquipo();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function cargarPlanta() {
+            try {
+                [productos] = await Promise.all([requestJson(`${API}/productos`)]);
+                document.getElementById('loteProducto').innerHTML = productos.map(producto => `<option value="${producto.id}">${escapeHtml(producto.nombre)}</option>`).join('');
+                document.getElementById('loteFecha').value ||= new Date().toISOString().slice(0, 10);
+                await cargarLotes();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function cargarLotes() {
+            try {
+                const lotes = await requestJson(`${API}/organizacion/lotes`);
+                document.getElementById('lotesBody').innerHTML = lotes.map(lote => `<tr><td><strong>${escapeHtml(lote.codigo)}</strong><div class="muted">${new Date(lote.fecha_produccion).toLocaleDateString()}</div></td><td>${escapeHtml(lote.producto_nombre)}</td><td>${lote.cantidad}</td><td>${escapeHtml(lote.estado)}</td><td>${escapeHtml(lote.resultado_calidad)}</td><td>${accionesLote(lote)}</td></tr>`).join('') || '<tr><td colspan="6">No hay lotes registrados</td></tr>';
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        function accionesLote(lote) {
+            if (['completado', 'cancelado'].includes(lote.estado)) return '<span class="muted">Cerrado</span>';
+            const buttons = [];
+            if (lote.estado === 'planificado') buttons.push(`<button class="button secondary" onclick="actualizarLote(${lote.id}, 'en_proceso')">Iniciar</button>`);
+            if (lote.resultado_calidad !== 'aprobado') buttons.push(`<button class="button success" onclick="actualizarLote(${lote.id}, null, 'aprobado')">Aprobar calidad</button>`);
+            if (lote.estado === 'en_proceso' && lote.resultado_calidad === 'aprobado') buttons.push(`<button class="button success" onclick="actualizarLote(${lote.id}, 'completado')">Ingresar stock</button>`);
+            buttons.push(`<button class="button danger" onclick="actualizarLote(${lote.id}, 'cancelado')">Cancelar</button>`);
+            return buttons.join(' ');
+        }
+
+        async function crearLote(event) {
+            event.preventDefault();
+            try {
+                await requestJson(`${API}/organizacion/lotes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codigo: document.getElementById('loteCodigo').value.trim(), producto_id: Number(document.getElementById('loteProducto').value), cantidad: Number(document.getElementById('loteCantidad').value), fecha_produccion: document.getElementById('loteFecha').value, observaciones: document.getElementById('loteObservaciones').value.trim() }) });
+                event.target.reset(); showToast('Lote creado', 'success'); cargarPlanta();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function actualizarLote(id, estado = null, calidad = null) {
+            if (!confirm('¿Confirmas actualizar este lote?')) return;
+            try {
+                await requestJson(`${API}/organizacion/lotes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ estado, resultado_calidad: calidad }) });
+                showToast('Lote actualizado', 'success'); cargarLotes();
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function logout() { await fetch(`${API}/auth/logout`, { method: 'POST' }); location.href = '/'; }
+        iniciar();
+    </script>
+</body>
+</html>

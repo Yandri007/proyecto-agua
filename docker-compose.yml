@@ -1,0 +1,40 @@
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aquacontrol
+      POSTGRES_USER: aquacontrol
+      POSTGRES_PASSWORD: local-aquacontrol-password
+    volumes:
+      - aquacontrol_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aquacontrol -d aquacontrol"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      APP_URL: http://localhost:3000
+      DB_USER: aquacontrol
+      DB_PASSWORD: local-aquacontrol-password
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: aquacontrol
+      DB_SSL: "false"
+      JWT_SECRET: local-development-secret-change-before-production
+      DEFAULT_EMPRESA_NAME: AquaControl Demo
+      DEFAULT_EMPRESA_SLUG: aqua-demo
+    ports:
+      - "3000:3000"
+
+volumes:
+  aquacontrol_data:

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaControl - Repartidor</title>
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="/assets/inter.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <script src="/vendor/leaflet/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/assets/safe-ui.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f5f7fa; color: #1a1a2e; }
+        .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+        .login-box { max-width: 400px; margin: 100px auto; background: white; padding: 40px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); text-align: center; }
+        .login-box input { width: 100%; padding: 14px; margin: 10px 0; border: 1px solid #ddd; border-radius: 12px; }
+        .login-box button { width: 100%; padding: 14px; background: #0077b6; color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 16px; border: 1px solid #e3e8ef; }
+        .card h3 { color: #0077b6; margin-bottom: 15px; border-bottom: 1px solid #e0e6ed; padding-bottom: 10px; }
+        .btn-success { background: #2ecc71; color: white; border: none; padding: 12px; border-radius: 12px; cursor: pointer; width: 100%; font-weight: 600; }
+        .btn-secondary { background: #3498db; color: white; border: none; padding: 12px; border-radius: 12px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: 600; }
+        #mapa { height: 300px; border-radius: 12px; margin: 10px 0; }
+        .ubicacion-actual { background: #f0f2f5; padding: 12px; border-radius: 12px; text-align: center; margin: 10px 0; font-size: 14px; }
+        .pedido-item { background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 12px; border-left: 4px solid #e94560; }
+        .pedido-item strong { color: #e94560; }
+        .badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
+        .badge-camino { background: #3498db; color: white; }
+        .badge-pendiente { background: #f39c12; color: white; }
+        .badge-entregado { background: #2ecc71; color: white; }
+        .toast { position: fixed; bottom: 30px; right: 30px; background: #2ecc71; color: white; padding: 12px 20px; border-radius: 50px; z-index: 3000; animation: slideIn 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 10px; }
+        .toast.error { background: #e74c3c; }
+        .toast.info { background: #3498db; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .estado-conexion { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+        .conectado { background: #2ecc71; box-shadow: 0 0 5px #2ecc71; }
+        .desconectado { background: #e74c3c; }
+        .logout-btn { background: #e74c3c; color: white; border: none; padding: 12px; border-radius: 12px; cursor: pointer; width: 100%; margin-top: 20px; font-weight: 600; }
+        .privacy-consent { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0; color: #4b5563; font-size: 13px; line-height: 1.45; }
+        .privacy-consent input { margin-top: 3px; }
+        .privacy-consent a { color: #0077b6; }
+        .tabla-historial { width: 100%; border-collapse: collapse; }
+        .tabla-historial th { background: #0f3460; color: white; padding: 10px; text-align: left; }
+        .tabla-historial td { padding: 10px; border-bottom: 1px solid #e0e6ed; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .total-dia { font-weight: bold; color: #2ecc71; }
+        .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .form-field { display: flex; flex-direction: column; gap: 6px; }
+        .form-field.full { grid-column: 1 / -1; }
+        .form-field label { color: #4b5563; font-size: 12px; font-weight: 600; }
+        .form-field input, .form-field select, .form-field textarea { width: 100%; padding: 11px; border: 1px solid #cfd8e3; border-radius: 6px; font: inherit; background: white; }
+        .product-sale-row { display: grid; grid-template-columns: 1fr 76px 76px; gap: 10px; align-items: end; padding: 10px 0; border-bottom: 1px solid #edf0f4; }
+        .product-sale-row input { width: 100%; padding: 9px; border: 1px solid #cfd8e3; border-radius: 6px; }
+        .quantity-field label { display:block; color:#667085; font-size:10px; margin-bottom:4px; }
+        .item-list { margin: 8px 0; color: #4b5563; font-size: 13px; line-height: 1.55; }
+        .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 20px 0 10px; }
+        .section-heading:first-child { margin-top: 0; }
+        .history-item { border-bottom: 1px solid #e5e7eb; padding: 14px 0; }
+        .history-item:last-child { border-bottom: 0; }
+        .badge-rechazada { background: #fee2e2; color: #991b1b; }
+        .badge-aprobada { background: #dcfce7; color: #166534; }
+        .badge-revision { background: #fef3c7; color: #92400e; }
+        .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+        .summary-value { padding: 12px 8px; background: #f7f9fc; border: 1px solid #e5e7eb; border-radius: 6px; text-align: center; }
+        .summary-value strong { display: block; color: #075985; font-size: 20px; }
+        .summary-value span { color: #667085; font-size: 11px; }
+        .modal { display:none; position:fixed; inset:0; z-index:4000; background:rgba(15,23,42,.72); align-items:center; justify-content:center; padding:16px; }
+        .modal-content { width:min(560px, 100%); max-height:92vh; overflow:auto; background:white; border-radius:8px; padding:20px; }
+        #firmaCanvas { width:100%; height:180px; border:1px solid #aeb8c5; border-radius:6px; touch-action:none; background:white; }
+        .vehicle-stock { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+        @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } .form-field.full { grid-column: auto; } .summary-grid, .vehicle-stock { grid-template-columns: 1fr; } .product-sale-row { grid-template-columns:1fr 68px 68px; } }
+    </style>
+    <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
+</head>
+<body class="aq-app aq-driver">
+    <div id="loginScreen" class="login-box">
+        <h2><i class="fas fa-shield-alt"></i> Verificando acceso</h2>
+        <p>Estamos preparando tu ruta de trabajo.</p>
+        <div id="loginError" style="color: #e74c3c; margin-top: 10px;"></div>
+    </div>
+
+    <div id="appScreen" style="display:none">
+        <div class="container">
+            <div class="card">
+                <h2><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> Hola, <span id="repartidorNombre"></span></h2>
+                <p><span class="estado-conexion conectado" id="estadoLed"></span> <span id="estadoTexto">Conectado</span></p>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-map-marker-alt"></i> Mi Ubicación</h3>
+                <div id="mapa"></div>
+                <div class="ubicacion-actual" id="estadoUbicacion"><i class="fas fa-spinner fa-spin"></i> Esperando GPS...</div>
+                <label class="privacy-consent">
+                    <input id="consentimientoUbicacion" type="checkbox">
+                    <span>Autorizo compartir mi ubicación durante repartos activos según la <a href="/legal/privacidad.html" target="_blank" rel="noopener">política de privacidad</a>.</span>
+                </label>
+                <button class="btn-success" onclick="iniciarSeguimiento()"><i class="fas fa-play"></i> Iniciar seguimiento</button>
+                <button class="btn-secondary" onclick="detenerSeguimiento()"><i class="fas fa-stop"></i> Detener</button>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-clipboard-list"></i> Mis Pedidos Asignados</h3>
+                <div id="pedidosLista"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+                <div style="font-size: 11px; color: #888; text-align: right; margin-top: 10px;" id="ultimaActualizacion"></div>
+            </div>
+
+            <div class="card" id="vehiculoCard" style="display:none;">
+                <h3><i class="fas fa-truck-ramp-box"></i> Vehículo e inventario</h3>
+                <div id="vehiculoResumen"></div>
+            </div>
+
+            <div class="card" id="ventaRutaCard">
+                <h3><i class="fas fa-cash-register"></i> Registrar venta en ruta</h3>
+                <form id="ventaRutaForm" onsubmit="registrarVentaRuta(event)">
+                    <div class="form-grid">
+                        <div class="form-field"><label for="ventaCliente">Cliente</label><input id="ventaCliente" maxlength="120" required></div>
+                        <div class="form-field"><label for="ventaTelefono">Teléfono</label><input id="ventaTelefono" maxlength="20" inputmode="tel"></div>
+                        <div class="form-field full"><label for="ventaDireccion">Dirección o referencia</label><input id="ventaDireccion" maxlength="300"></div>
+                        <div class="form-field"><label for="ventaMetodo">Método de pago</label><select id="ventaMetodo"><option value="efectivo">Efectivo</option><option value="transferencia">Transferencia</option><option value="credito">Crédito</option><option value="otro">Otro</option></select></div>
+                        <div class="form-field"><label for="ventaReferencia">Referencia de pago</label><input id="ventaReferencia" maxlength="120"></div>
+                        <div class="form-field full"><label>Productos entregados</label><div id="productosVentaRuta">Cargando productos...</div></div>
+                        <div class="form-field full"><label for="ventaObservaciones">Observaciones</label><textarea id="ventaObservaciones" maxlength="500" rows="3"></textarea></div>
+                    </div>
+                    <button id="registrarVentaButton" class="btn-success" type="submit" style="margin-top:14px;"><i class="fas fa-receipt"></i> Registrar para revisión</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-clock-rotate-left"></i> Historial</h3>
+                <div id="resumenRepartidor" class="summary-grid"></div>
+                <div class="section-heading"><h4>Pedidos atendidos</h4><span class="badge badge-entregado">Solo lectura</span></div>
+                <div id="historialPedidos"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+                <div class="section-heading"><h4>Ventas registradas en ruta</h4><span class="badge badge-revision">Revisión administrativa</span></div>
+                <div id="historialVentasRuta"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>
+            </div>
+
+            <div class="card" id="cierreRutaCard" style="display:none;">
+                <h3><i class="fas fa-cash-register"></i> Cierre de ruta</h3>
+                <form onsubmit="registrarCierreRuta(event)">
+                    <div class="form-grid">
+                        <div class="form-field"><label for="cierreEfectivo">Efectivo contado</label><input id="cierreEfectivo" type="number" min="0" max="999999" step="0.01" required></div>
+                        <div class="form-field"><label for="cierreGastos">Gastos de ruta</label><input id="cierreGastos" type="number" min="0" max="999999" step="0.01" value="0" required></div>
+                        <div class="form-field full"><label for="cierreObservaciones">Observaciones</label><textarea id="cierreObservaciones" maxlength="500" rows="2"></textarea></div>
+                    </div>
+                    <button class="btn-success" type="submit" style="margin-top:12px;"><i class="fas fa-lock"></i> Registrar cierre de hoy</button>
+                </form>
+                <div class="section-heading"><h4>Últimos cierres</h4><span class="badge badge-revision">Solo lectura tras revisión</span></div>
+                <div id="historialCierres"></div>
+            </div>
+
+            <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Cerrar sesión</button>
+        </div>
+    </div>
+
+    <div id="entregaModal" class="modal"><div class="modal-content">
+        <h3><i class="fas fa-file-signature"></i> Comprobante de entrega</h3>
+        <input type="hidden" id="entregaPedidoId">
+        <div class="form-field" style="margin-top:14px;"><label for="entregaReceptor">Nombre de quien recibe</label><input id="entregaReceptor" maxlength="120" required></div>
+        <div id="entregaEnvases" style="margin-top:12px;"></div>
+        <div class="form-field" style="margin-top:12px;"><label>Firma del receptor</label><canvas id="firmaCanvas" width="520" height="180"></canvas></div>
+        <button class="btn-secondary" type="button" onclick="limpiarFirma()" style="width:auto; padding:8px 12px;"><i class="fas fa-eraser"></i> Limpiar firma</button>
+        <div class="form-field" style="margin-top:12px;"><label for="entregaObservaciones">Observaciones</label><textarea id="entregaObservaciones" maxlength="500" rows="2"></textarea></div>
+        <div style="display:flex; gap:10px; margin-top:16px;"><button id="confirmarEntregaButton" class="btn-success" type="button" onclick="confirmarEntregaConComprobante()"><i class="fas fa-check"></i> Confirmar entrega</button><button class="logout-btn" type="button" onclick="cerrarEntregaModal()" style="margin:0;"><i class="fas fa-xmark"></i> Cancelar</button></div>
+    </div></div>
+
+    <script nonce="{{CSP_NONCE}}">
+        let token = null, userId = null, socket = null, map = null, marker = null, seguimientoId = null, intervaloPedidos = null, pedidoActivo = null, catalogoProductos = [], pedidosAsignados = [], miVehiculo = null;
+        let driverRefreshTimer = null;
+        let empresaModulos = { ventas_ruta: true, logistica: false };
+        let firmaActiva = false, firmaTrazada = false;
+
+        function refrescarRepartidor() {
+            if (!userId || document.hidden) return;
+            clearTimeout(driverRefreshTimer);
+            driverRefreshTimer = setTimeout(() => {
+                cargarPedidos();
+                cargarHistorial();
+                cargarCierresRuta();
+                if (empresaModulos.logistica) cargarVehiculo().then(cargarCatalogoVentas);
+            }, 250);
+        }
+        const API = '/api';
+
+        const { escapeHtml, showToast: mostrarToast, requestJson } = AquaUI;
+
+        async function validarSesionRepartidor() {
+            try {
+                const res = await fetch(`${API}/auth/me`);
+                const data = await res.json();
+                if (res.ok && data.user.rol === 'repartidor') {
+                    token = 'cookie-session';
+                    userId = data.user.id;
+                    iniciarApp(data.user);
+                } else {
+                    window.location.href = '/';
+                }
+            } catch (error) {
+                document.getElementById('loginError').textContent = 'No se pudo verificar la sesión.';
+                setTimeout(() => { window.location.href = '/'; }, 1500);
+            }
+        }
+
+        async function iniciarApp(user) {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('appScreen').style.display = 'block';
+            document.getElementById('repartidorNombre').innerText = user.nombre;
+            AquaUI.startSessionGuard('repartidor', user.id);
+            document.getElementById('consentimientoUbicacion').checked = user.ubicacion_consentida;
+            empresaModulos = { ...empresaModulos, ...(user.empresa.modulos || {}) };
+            document.getElementById('ventaRutaCard').style.display = empresaModulos.ventas_ruta ? 'block' : 'none';
+            document.getElementById('vehiculoCard').style.display = empresaModulos.logistica ? 'block' : 'none';
+            document.getElementById('cierreRutaCard').style.display = empresaModulos.logistica ? 'block' : 'none';
+            conectarWebSocket();
+            iniciarMapa();
+            if (empresaModulos.logistica) await cargarVehiculo();
+            await Promise.all([cargarPedidos(), cargarCatalogoVentas(), cargarHistorial(), cargarCierresRuta()]);
+            intervaloPedidos = setInterval(() => { 
+                cargarPedidos(); 
+                cargarHistorial();
+                if (empresaModulos.logistica) cargarVehiculo().then(cargarCatalogoVentas);
+            }, 15000);
+            mostrarToast(`Bienvenido ${user.nombre}`, 'success');
+        }
+
+        function conectarWebSocket() {
+            socket = io();
+            socket.on('connect', () => { 
+                document.getElementById('estadoLed').className = 'estado-conexion conectado'; 
+                document.getElementById('estadoTexto').innerText = 'Conectado'; 
+            });
+            socket.on('disconnect', () => { 
+                document.getElementById('estadoLed').className = 'estado-conexion desconectado'; 
+                document.getElementById('estadoTexto').innerText = 'Desconectado'; 
+                mostrarToast('Desconectado del servidor', 'error'); 
+            });
+            socket.on('nuevo_pedido_asignado', (data) => { 
+                mostrarToast(`Nuevo pedido #${data.pedidoId} asignado a ti`, 'info');
+                cargarPedidos(); 
+            });
+            socket.on('pedido_actualizado', cargarPedidos);
+            socket.on('operacion_actualizada', (data) => {
+                if (['/api/pedidos', '/api/logistica', '/api/ventas', '/api/productos'].includes(data.recurso)) {
+                    refrescarRepartidor();
+                }
+            });
+            document.addEventListener('aquacontrol:reconnected', refrescarRepartidor);
+            socket.on('connect_error', () => {
+                document.getElementById('estadoLed').className = 'estado-conexion desconectado';
+                document.getElementById('estadoTexto').innerText = 'Sesión desconectada';
+            });
+            socket.on('venta_ruta_revisada', (data) => {
+                mostrarToast(`Venta #${data.ventaId}: ${data.estado}`, 'info');
+                cargarHistorial();
+            });
+            socket.on('cierre_ruta_revisado', (data) => {
+                mostrarToast(`Cierre #${data.cierreId}: ${data.estado}`, 'info');
+                cargarCierresRuta();
+            });
+        }
+
+        function iniciarMapa() {
+            if (typeof L === 'undefined') {
+                document.getElementById('estadoUbicacion').textContent = 'El mapa no pudo cargarse';
+                return;
+            }
+            map = L.map('mapa').setView([-0.180653, -78.467838], 13);
+            const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+            tiles.on('tileerror', () => {
+                document.getElementById('estadoUbicacion').textContent = 'Mapa base temporalmente no disponible; el GPS sigue activo';
+            });
+            if (navigator.geolocation) { 
+                navigator.geolocation.getCurrentPosition(pos => { 
+                    const lat = pos.coords.latitude, lng = pos.coords.longitude; 
+                    map.setView([lat, lng], 15); 
+                    marker = L.marker([lat, lng]).addTo(map).bindPopup('Tu ubicación').openPopup();
+                }, () => mostrarToast('Activa el GPS para compartir ubicación', 'error')); 
+            }
+        }
+
+        async function iniciarSeguimiento() {
+            if (seguimientoId !== null) { mostrarToast('El seguimiento ya está activo', 'info'); return; }
+            if (!pedidoActivo) { mostrarToast('No tienes un pedido activo para enviar ubicación', 'error'); return; }
+            const consentCheckbox = document.getElementById('consentimientoUbicacion');
+            if (!consentCheckbox.checked) {
+                mostrarToast('Debes autorizar el uso de ubicación para iniciar', 'error');
+                return;
+            }
+            if (!navigator.geolocation) {
+                mostrarToast('Este dispositivo no permite compartir ubicación', 'error');
+                return;
+            }
+
+            try {
+                await requestJson(`${API}/auth/ubicacion/consentimiento`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aceptado: true })
+                });
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+                return;
+            }
+            
+            mostrarToast('Seguimiento activado. Compartiendo ubicación...', 'success');
+
+            seguimientoId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    if (marker) marker.setLatLng([lat, lng]);
+                    else marker = L.marker([lat, lng]).addTo(map);
+                    map.setView([lat, lng], 15);
+                    document.getElementById('estadoUbicacion').innerHTML = `<i class="fas fa-location-dot"></i> Enviando: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+                    if (socket?.connected && pedidoActivo) {
+                        socket.emit('enviar_ubicacion', {
+                            latitud: lat,
+                            longitud: lng,
+                            precision: position.coords.accuracy,
+                            pedidoId: pedidoActivo
+                        }, (result) => {
+                            if (!result?.ok) {
+                                document.getElementById('estadoUbicacion').textContent = result?.error || 'No fue posible compartir la ubicación';
+                            }
+                        });
+                    }
+                },
+                () => {
+                    document.getElementById('estadoUbicacion').textContent = 'No se pudo obtener la ubicación. Revisa el permiso de GPS.';
+                },
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+            );
+        }
+
+        function detenerSeguimiento() { 
+            if (seguimientoId !== null) {
+                navigator.geolocation.clearWatch(seguimientoId);
+                seguimientoId = null;
+                document.getElementById('estadoUbicacion').innerHTML = '<i class="fas fa-stop"></i> Seguimiento detenido'; 
+                mostrarToast('Seguimiento detenido', 'info'); 
+            } 
+        }
+
+        document.getElementById('consentimientoUbicacion').addEventListener('change', async (event) => {
+            if (event.target.checked) return;
+            detenerSeguimiento();
+            try {
+                await requestJson(`${API}/auth/ubicacion/consentimiento`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ aceptado: false })
+                });
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            }
+        });
+
+        async function cargarPedidos() {
+            if (!userId) return;
+            try {
+                const res = await fetch(`${API}/repartidor/pedidos`);
+                const pedidos = await res.json();
+                if (!res.ok) throw new Error(pedidos.error || 'No fue posible cargar los pedidos');
+                pedidosAsignados = pedidos;
+                document.getElementById('ultimaActualizacion').innerHTML = `<i class="fas fa-sync-alt"></i> ${new Date().toLocaleTimeString()}`;
+                const div = document.getElementById('pedidosLista');
+                if (!pedidos.length) { 
+                    div.innerHTML = '<p style="color:#888;"><i class="fas fa-inbox"></i> No tienes pedidos asignados</p>'; 
+                    pedidoActivo = null; 
+                    return; 
+                }
+                div.innerHTML = pedidos.map(p => `
+                    <div class="pedido-item">
+                        <strong>Pedido #${p.id}</strong> 
+                        <span class="badge ${p.estado === 'pendiente' ? 'badge-pendiente' : 'badge-camino'}">
+                            ${p.estado === 'pendiente' ? '<i class="fas fa-clock"></i> Pendiente' : '<i class="fas fa-truck-fast"></i> En camino'}
+                        </span><br>
+                        <i class="fas fa-user"></i> Cliente: ${escapeHtml(p.cliente_nombre || 'Cliente #' + p.cliente_id)}<br>
+                        <i class="fas fa-dollar-sign"></i> Subtotal: $${Number(p.subtotal_productos || p.total).toFixed(2)} · ${p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo'}<br>
+                        <i class="fas fa-map-pin"></i> Dirección: ${escapeHtml(p.direccion_entrega || 'No especificada')}<br>
+                        <div class="item-list">${(p.productos || []).map(item => `${Number(item.cantidad)} × ${escapeHtml(item.nombre)}`).join('<br>')}</div>
+                        ${p.estado !== 'entregado' ? `<button class="btn-success" style="margin-top:12px; padding:10px;" onclick="entregarPedido(${p.id})"><i class="fas fa-file-signature"></i> Confirmar entrega</button>` : '<span style="color:#2ecc71;"><i class="fas fa-check-circle"></i> Entregado</span>'}
+                    </div>
+                `).join('');
+                const activo = pedidos.find(p => p.estado !== 'entregado');
+                if (activo) pedidoActivo = activo.id;
+                else pedidoActivo = null;
+            } catch (error) { 
+                console.error(error);
+                document.getElementById('pedidosLista').innerHTML = '<p style="color:#e74c3c;"><i class="fas fa-exclamation-triangle"></i> Error cargando pedidos</p>'; 
+            }
+        }
+
+        async function cargarVehiculo() {
+            if (!empresaModulos.logistica) return;
+            try {
+                miVehiculo = await requestJson(`${API}/logistica/mi-vehiculo`);
+                document.getElementById('vehiculoResumen').innerHTML = `
+                    <p><strong>${escapeHtml(miVehiculo.nombre)}</strong> · ${escapeHtml(miVehiculo.placa)}</p>
+                    <div class="vehicle-stock" style="margin-top:12px;">${miVehiculo.inventario.map(item => `
+                        <div class="summary-value"><strong>${item.cantidad}</strong><span>${escapeHtml(item.nombre)}</span></div>`).join('')}</div>`;
+            } catch (error) {
+                miVehiculo = null;
+                document.getElementById('vehiculoResumen').innerHTML = `<p style="color:#991b1b;">${escapeHtml(error.message)}</p>`;
+            }
+        }
+
+        async function cargarCatalogoVentas() {
+            try {
+                catalogoProductos = await requestJson(`${API}/productos`);
+                const availableProducts = empresaModulos.logistica
+                    ? (miVehiculo?.inventario || []).map(item => ({ ...item, stock: Number(item.cantidad) }))
+                    : catalogoProductos;
+                document.getElementById('productosVentaRuta').innerHTML = availableProducts.map(producto => `
+                    <div class="product-sale-row">
+                        <div><strong>${escapeHtml(producto.nombre)}</strong><br><small>$${Number(producto.precio).toFixed(2)} · Disponible ${producto.stock}${producto.es_retornable ? ` · Depósito $${Number(producto.deposito_envase).toFixed(2)}` : ''}</small></div>
+                        <div class="quantity-field"><label>Venta</label><input type="number" min="0" max="${producto.stock}" value="0" data-cantidad data-producto-id="${producto.producto_id || producto.id}" aria-label="Cantidad de ${escapeHtml(producto.nombre)}"></div>
+                        <div class="quantity-field"><label>Retorno</label>${producto.es_retornable ? `<input type="number" min="0" max="1000" value="0" data-envases data-producto-id="${producto.producto_id || producto.id}" aria-label="Envases devueltos de ${escapeHtml(producto.nombre)}">` : '<input value="-" disabled aria-label="No retornable">'}</div>
+                    </div>
+                `).join('') || '<p>No hay productos disponibles.</p>';
+            } catch (error) {
+                document.getElementById('productosVentaRuta').textContent = error.message;
+            }
+        }
+
+        async function registrarVentaRuta(event) {
+            event.preventDefault();
+            const productos = [...document.querySelectorAll('#productosVentaRuta input[data-cantidad]')]
+                .map(input => ({
+                    producto_id: Number(input.dataset.productoId),
+                    cantidad: Number(input.value),
+                    envases_devueltos: Number(document.querySelector(`#productosVentaRuta input[data-envases][data-producto-id="${input.dataset.productoId}"]`)?.value || 0)
+                }))
+                .filter(item => Number.isInteger(item.cantidad) && item.cantidad > 0);
+            if (productos.length === 0) {
+                mostrarToast('Selecciona al menos un producto', 'error');
+                return;
+            }
+            const button = document.getElementById('registrarVentaButton');
+            button.disabled = true;
+            try {
+                const idempotencyKey = crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                await requestJson(`${API}/ventas/ruta`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cliente_nombre: document.getElementById('ventaCliente').value.trim(),
+                        cliente_telefono: document.getElementById('ventaTelefono').value.trim(),
+                        direccion: document.getElementById('ventaDireccion').value.trim(),
+                        metodo_pago: document.getElementById('ventaMetodo').value,
+                        referencia_pago: document.getElementById('ventaReferencia').value.trim(),
+                        observaciones: document.getElementById('ventaObservaciones').value.trim(),
+                        productos,
+                        idempotency_key: idempotencyKey,
+                        vendido_en: new Date().toISOString()
+                    })
+                });
+                document.getElementById('ventaRutaForm').reset();
+                mostrarToast('Venta registrada y enviada al administrador', 'success');
+                if (empresaModulos.logistica) await cargarVehiculo();
+                await cargarCatalogoVentas();
+                await cargarHistorial();
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function cargarHistorial() {
+            if (!userId) return;
+            try {
+                const [pedidos, ventas, resumen] = await Promise.all([
+                    requestJson(`${API}/repartidor/historial`),
+                    requestJson(`${API}/ventas/mis-ventas`).catch(error => error.message.includes('módulo') ? [] : Promise.reject(error)),
+                    requestJson(`${API}/repartidor/estadisticas`)
+                ]);
+                document.getElementById('resumenRepartidor').innerHTML = `
+                    <div class="summary-value"><strong>${resumen.entregados}</strong><span>Entregados</span></div>
+                    <div class="summary-value"><strong>${resumen.ventas_pendientes}</strong><span>Ventas por revisar</span></div>
+                    <div class="summary-value"><strong>$${Number(resumen.total_ventas).toFixed(2)}</strong><span>Venta aprobada</span></div>`;
+                document.getElementById('historialPedidos').innerHTML = pedidos.length ? pedidos.map(pedido => `
+                    <div class="history-item">
+                        <strong>Pedido #${pedido.id}</strong> <span class="badge ${pedido.estado === 'entregado' ? 'badge-entregado' : 'badge-rechazada'}">${escapeHtml(pedido.estado)}</span>
+                        <div>${escapeHtml(pedido.cliente_nombre)} · $${Number(pedido.total).toFixed(2)} · ${new Date(pedido.actualizado_en).toLocaleString()}</div>
+                        <div class="item-list">${(pedido.productos || []).map(item => `${Number(item.cantidad)} × ${escapeHtml(item.nombre)}`).join(' · ')}</div>
+                    </div>`).join('') : '<p style="color:#667085;">Todavía no hay pedidos finalizados.</p>';
+                document.getElementById('historialVentasRuta').innerHTML = ventas.length ? ventas.map(venta => `
+                    <div class="history-item">
+                        <strong>Venta #${venta.id}</strong> <span class="badge badge-${venta.estado_revision === 'pendiente' ? 'revision' : venta.estado_revision}">${escapeHtml(venta.estado_revision)}</span>
+                        <div>${escapeHtml(venta.cliente_nombre)} · $${Number(venta.total).toFixed(2)} · ${new Date(venta.vendido_en).toLocaleString()}</div>
+                        <div class="item-list">${(venta.productos || []).map(item => `${Number(item.cantidad)} × ${escapeHtml(item.nombre)}`).join(' · ')}</div>
+                        ${venta.nota_revision ? `<small>Nota: ${escapeHtml(venta.nota_revision)}</small>` : ''}
+                    </div>`).join('') : '<p style="color:#667085;">Todavía no registras ventas durante la ruta.</p>';
+            } catch (error) {
+                document.getElementById('historialPedidos').textContent = error.message;
+                document.getElementById('historialVentasRuta').textContent = error.message;
+            }
+        }
+
+        async function entregarPedido(pedidoId) {
+            if (empresaModulos.logistica) {
+                abrirEntregaModal(pedidoId);
+                return;
+            }
+            if (!confirm('¿Confirmar que entregaste este pedido al cliente?')) return;
+            try {
+                const res = await fetch(`${API}/pedidos/${pedidoId}/estado`, {
+                    method: 'PUT', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado: 'entregado' }) 
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    mostrarToast(data.error || 'No fue posible confirmar la entrega', 'error');
+                    return;
+                }
+                mostrarToast('Pedido entregado correctamente', 'success');
+                cargarPedidos();
+                cargarHistorial();
+                if (pedidoActivo === pedidoId) pedidoActivo = null;
+                detenerSeguimiento();
+            } catch (error) { 
+                mostrarToast('Error al confirmar entrega', 'error'); 
+            }
+        }
+
+        function abrirEntregaModal(pedidoId) {
+            const pedido = pedidosAsignados.find(item => item.id === pedidoId);
+            if (!pedido) return;
+            document.getElementById('entregaPedidoId').value = pedidoId;
+            document.getElementById('entregaReceptor').value = pedido.cliente_nombre || '';
+            document.getElementById('entregaObservaciones').value = '';
+            const returnables = (pedido.productos || []).filter(item => item.es_retornable);
+            document.getElementById('entregaEnvases').innerHTML = returnables.length ? `
+                <div class="section-heading"><h4>Envases recibidos</h4></div>
+                ${returnables.map(item => `<div class="product-sale-row" style="grid-template-columns:1fr 90px;"><div><strong>${escapeHtml(item.nombre)}</strong><br><small>Entregados ${item.cantidad} · Depósito $${Number(item.deposito_envase || 0).toFixed(2)} por envase pendiente</small></div><div class="quantity-field"><label>Devueltos</label><input type="number" min="0" max="1000" value="0" data-entrega-envase="${item.producto_id}"></div></div>`).join('')}` : '';
+            limpiarFirma();
+            document.getElementById('entregaModal').style.display = 'flex';
+        }
+
+        function cerrarEntregaModal() {
+            document.getElementById('entregaModal').style.display = 'none';
+            limpiarFirma();
+        }
+
+        function inicializarFirma() {
+            const canvas = document.getElementById('firmaCanvas');
+            const context = canvas.getContext('2d');
+            context.lineWidth = 2.5;
+            context.lineCap = 'round';
+            context.strokeStyle = '#111827';
+            const point = event => {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: (event.clientX - rect.left) * canvas.width / rect.width,
+                    y: (event.clientY - rect.top) * canvas.height / rect.height
+                };
+            };
+            canvas.addEventListener('pointerdown', event => {
+                firmaActiva = true;
+                const start = point(event);
+                context.beginPath();
+                context.moveTo(start.x, start.y);
+                canvas.setPointerCapture(event.pointerId);
+            });
+            canvas.addEventListener('pointermove', event => {
+                if (!firmaActiva) return;
+                const next = point(event);
+                context.lineTo(next.x, next.y);
+                context.stroke();
+                firmaTrazada = true;
+            });
+            const stop = () => { firmaActiva = false; };
+            canvas.addEventListener('pointerup', stop);
+            canvas.addEventListener('pointercancel', stop);
+        }
+
+        function limpiarFirma() {
+            const canvas = document.getElementById('firmaCanvas');
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+            firmaTrazada = false;
+        }
+
+        async function confirmarEntregaConComprobante() {
+            const orderId = Number(document.getElementById('entregaPedidoId').value);
+            const receiver = document.getElementById('entregaReceptor').value.trim();
+            if (receiver.length < 2 || !firmaTrazada) {
+                mostrarToast('Registra el nombre y la firma de quien recibe', 'error');
+                return;
+            }
+            const envases = [...document.querySelectorAll('[data-entrega-envase]')].map(input => ({
+                producto_id: Number(input.dataset.entregaEnvase), devueltos: Number(input.value)
+            }));
+            const position = marker?.getLatLng();
+            const button = document.getElementById('confirmarEntregaButton');
+            button.disabled = true;
+            try {
+                const delivery = await requestJson(`${API}/logistica/comprobantes/${orderId}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        receptor_nombre: receiver,
+                        firma_data: document.getElementById('firmaCanvas').toDataURL('image/png'),
+                        observaciones: document.getElementById('entregaObservaciones').value.trim(),
+                        latitud: position?.lat ?? null,
+                        longitud: position?.lng ?? null,
+                        envases
+                    })
+                });
+                cerrarEntregaModal();
+                mostrarToast(`Pedido entregado. Total $${Number(delivery.total).toFixed(2)}`, 'success');
+                await Promise.all([cargarPedidos(), cargarHistorial()]);
+                if (pedidoActivo === orderId) pedidoActivo = null;
+                detenerSeguimiento();
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function cargarCierresRuta() {
+            if (!empresaModulos.logistica) return;
+            try {
+                const closings = await requestJson(`${API}/logistica/cierres`);
+                document.getElementById('historialCierres').innerHTML = closings.length ? closings.slice(0, 10).map(closing => `
+                    <div class="history-item"><strong>${new Date(`${String(closing.fecha).slice(0, 10)}T12:00:00`).toLocaleDateString()}</strong> <span class="badge badge-${closing.estado_revision === 'aprobado' ? 'aprobada' : 'revision'}">${escapeHtml(closing.estado_revision)}</span><div>Efectivo esperado $${Number(closing.efectivo_esperado).toFixed(2)} · Declarado $${Number(closing.efectivo_declarado).toFixed(2)} · Diferencia $${Number(closing.diferencia).toFixed(2)}</div>${closing.nota_revision ? `<small>${escapeHtml(closing.nota_revision)}</small>` : ''}</div>`
+                ).join('') : '<p style="color:#667085;">Todavía no hay cierres registrados.</p>';
+            } catch (error) {
+                document.getElementById('historialCierres').textContent = error.message;
+            }
+        }
+
+        async function registrarCierreRuta(event) {
+            event.preventDefault();
+            try {
+                const closing = await requestJson(`${API}/logistica/cierres`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        efectivo_declarado: Number(document.getElementById('cierreEfectivo').value),
+                        gastos: Number(document.getElementById('cierreGastos').value),
+                        observaciones: document.getElementById('cierreObservaciones').value.trim()
+                    })
+                });
+                mostrarToast(`Cierre registrado. Diferencia: $${Number(closing.diferencia).toFixed(2)}`, Number(closing.diferencia) === 0 ? 'success' : 'info');
+                await cargarCierresRuta();
+            } catch (error) { mostrarToast(error.message, 'error'); }
+        }
+
+        async function logout() {
+            detenerSeguimiento(); 
+            if (intervaloPedidos) clearInterval(intervaloPedidos); 
+            await fetch(`${API}/auth/logout`, { method: 'POST' });
+            sessionStorage.removeItem('aquacontrol_user');
+            window.location.href = '/'; 
+        }
+
+        inicializarFirma();
+        validarSesionRepartidor();
+    </script>
+</body>
+</html>

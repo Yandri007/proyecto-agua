@@ -1,5 +1,6 @@
 # Dependencias
 node_modules/
+.tools/
 npm-debug.log
 yarn-error.log
 
@@ -13,8 +14,10 @@ yarn-error.log
 *.db
 *.sqlite
 *.sql
+*.dump
 data/
 pgdata/
+backend/backups/
 
 # Archivos del sistema
 .DS_Store
@@ -51,9 +54,9 @@ build/
 *.exe
 *.dll
 
-#codegraph y agentes
+# Herramientas locales de analisis
 .agents/
 .codegraph/
 
-#builds
-frontend/build
+# Compilaciones moviles
+mobile/build/

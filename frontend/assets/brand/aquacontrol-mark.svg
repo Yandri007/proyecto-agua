@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">AquaControl</title>
+  <desc id="desc">Gota de agua con una ruta de distribución conectada</desc>
+  <path fill="#087f8c" d="M32 3C22 16 12 27 12 40c0 11 9 20 20 20s20-9 20-20C52 27 42 16 32 3Z"/>
+  <path fill="#123448" d="M32 8c-2.5 3.4-5 6.7-7.2 9.9C19.3 25.7 16 32.4 16 40c0 8.8 7.2 16 16 16V8Z" opacity=".34"/>
+  <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M23 41c5-8 9 3 14-5 2-3 4-5 6-6"/>
+  <circle cx="22.5" cy="41.5" r="3.5" fill="#fff"/>
+  <circle cx="37" cy="36" r="3.5" fill="#fff"/>
+  <circle cx="43" cy="30" r="3.5" fill="#fff"/>
+</svg>

@@ -1,4 +1,4 @@
-name: Multiplatform Flutter Release
+name: Flutter Release
 
 on:
   push:
@@ -7,156 +7,153 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for the release (e.g. v1.0.0)'
+        description: 'Release tag (for example, v1.0.0)'
         required: true
         default: 'v1.0.0'
 
 jobs:
-  # Job 1: Build Android APK
   build-android:
-    name: Build Android APK
+    name: Build signed Android APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
-          distribution: 'zulu'
+          distribution: zulu
           java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
 
-      - name: Install Dependencies
-        run: |
-          cd frontend
-          flutter pub get
-
-      # Decodificar el Keystore desde GitHub Secrets para una firma segura
-      - name: Decode Android Keystore
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > frontend/android/key.jks
+      - name: Validate Android signing secrets
+        shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        continue-on-error: true # Permite compilar builds de desarrollo sin secretos
-
-      # Generar key.properties dinámicamente usando secretos o credenciales por defecto
-      - name: Create key.properties
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD || 'aquacontrolpass' }}" > frontend/android/key.properties
-          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD || 'aquacontrolpass' }}" >> frontend/android/key.properties
-          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS || 'key' }}" >> frontend/android/key.properties
-          echo "storeFile=../key.jks" >> frontend/android/key.properties
-        continue-on-error: true
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_STORE_PASSWORD ANDROID_KEY_PASSWORD ANDROID_KEY_ALIAS; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required GitHub secret: $name"
+              exit 1
+            fi
+          done
 
-      - name: Build APK
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Configure Android signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          cd frontend
-          flutter build apk --release
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/key.jks
+          printf 'storePassword=%s\n' "$ANDROID_STORE_PASSWORD" > android/key.properties
+          printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD" >> android/key.properties
+          printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS" >> android/key.properties
+          printf 'storeFile=../key.jks\n' >> android/key.properties
 
-      - name: Prepare APK Asset
-        run: |
-          cp frontend/build/app/outputs/flutter-apk/app-release.apk aquacontrol-android.apk
+      - name: Build release APK
+        run: flutter build apk --release
 
-      - name: Upload APK Artifact
+      - name: Prepare Android asset
+        run: cp build/app/outputs/flutter-apk/app-release.apk ../aquacontrol-android.apk
+
+      - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: aquacontrol-android.apk
 
-  # Job 2: Build Linux Desktop
   build-linux:
-    name: Build Linux Desktop
+    name: Build Linux desktop
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-      - name: Install Linux Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libblkid-dev liblzma-dev
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
 
-      - name: Install Dependencies
-        run: |
-          cd frontend
-          flutter pub get
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Build Linux
-        run: |
-          cd frontend
-          flutter build linux --release
+        run: flutter build linux --release
 
-      - name: Compress Linux Bundle
-        run: |
-          tar -czf aquacontrol-linux.tar.gz -C frontend/build/linux/x64/release/bundle .
+      - name: Compress Linux bundle
+        run: tar -czf ../aquacontrol-linux.tar.gz -C build/linux/x64/release/bundle .
 
-      - name: Upload Linux Artifact
+      - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-app
           path: aquacontrol-linux.tar.gz
 
-  # Job 3: Build Windows Desktop
   build-windows:
-    name: Build Windows Desktop
+    name: Build Windows desktop
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mobile
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
 
-      - name: Install Dependencies
-        run: |
-          cd frontend
-          flutter pub get
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Build Windows
-        run: |
-          cd frontend
-          flutter build windows --release
+        run: flutter build windows --release
 
-      - name: Compress Windows Bundle
-        run: |
-          Compress-Archive -Path frontend/build/windows/x64/release/runner/* -DestinationPath aquacontrol-windows.zip
+      - name: Compress Windows bundle
+        run: Compress-Archive -Path build/windows/x64/release/runner/* -DestinationPath ../aquacontrol-windows.zip
 
-      - name: Upload Windows Artifact
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
           path: aquacontrol-windows.zip
 
-  # Job 4: Create GitHub Release and Upload Assets
   create-release:
-    name: Publish GitHub Release
+    name: Create draft GitHub release
     needs: [build-android, build-linux, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Download All Artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
@@ -165,8 +162,6 @@ jobs:
             release-assets/aquacontrol-android.apk
             release-assets/aquacontrol-linux.tar.gz
             release-assets/aquacontrol-windows.zip
-          draft: false
+          draft: true
           prerelease: false
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

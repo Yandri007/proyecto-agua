@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: aquacontrol-saas
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 30
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_SSL
+        value: "true"
+      - key: DB_POOL_MAX
+        value: "10"
+      - key: DB_IDLE_TIMEOUT_MS
+        value: "30000"
+      - key: DB_CONNECTION_TIMEOUT_MS
+        value: "10000"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONITORING_TOKEN
+        generateValue: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: AquaControl <onboarding@resend.dev>
+      - key: KUSHKI_ENVIRONMENT
+        value: uat
+      - key: ALLOW_DATABASE_RESTORE
+        value: "false"
+      - key: LOCATION_RETENTION_DAYS
+        value: "30"
+      - key: AUDIT_RETENTION_DAYS
+        value: "365"
+      - key: DEFAULT_EMPRESA_NAME
+        value: AquaControl Base
+      - key: DEFAULT_EMPRESA_SLUG
+        value: aquacontrol-base
