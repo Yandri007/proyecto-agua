@@ -5,7 +5,6 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
-    maxShutdownDelaySeconds: 30
     autoDeployTrigger: checksPass
     envVars:
       - key: NODE_ENV
