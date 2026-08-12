@@ -28,6 +28,15 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 if (renderUrl && !allowedOrigins.includes(renderUrl)) allowedOrigins.push(renderUrl);
 
+const platformAdminBootstrapEmail = (process.env.PLATFORM_ADMIN_EMAIL || '').trim().toLowerCase();
+const platformAdminBootstrapPassword = process.env.PLATFORM_ADMIN_PASSWORD || '';
+if (Boolean(platformAdminBootstrapEmail) !== Boolean(platformAdminBootstrapPassword)) {
+  throw new Error('PLATFORM_ADMIN_EMAIL y PLATFORM_ADMIN_PASSWORD deben configurarse juntos');
+}
+if (platformAdminBootstrapPassword && platformAdminBootstrapPassword.length < 14) {
+  throw new Error('PLATFORM_ADMIN_PASSWORD debe tener al menos 14 caracteres');
+}
+
 const database = databaseConnectionFromEnv(process.env);
 const databaseSsl = process.env.DB_SSL === 'true';
 if (!database.password) {
@@ -53,6 +62,9 @@ module.exports = {
   jwtSecret,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   sessionCookie: 'aquacontrol_session',
+  platformSessionCookie: 'aquacontrol_platform_session',
+  platformAdminBootstrapEmail,
+  platformAdminBootstrapPassword,
   defaultEmpresaName: process.env.DEFAULT_EMPRESA_NAME || 'AquaControl Demo',
   defaultEmpresaSlug: process.env.DEFAULT_EMPRESA_SLUG || 'aqua-demo',
   allowedOrigins,

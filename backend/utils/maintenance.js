@@ -31,11 +31,17 @@ const runMaintenance = async () => {
        WHERE creado_en < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 day')`,
       [env.auditRetentionDays]
     );
+    const platformAudits = await client.query(
+      `DELETE FROM auditoria_plataforma
+       WHERE creado_en < CURRENT_TIMESTAMP - ($1 * INTERVAL '1 day')`,
+      [env.auditRetentionDays]
+    );
     await client.query('COMMIT');
     logger.info('maintenance_completed', {
       deletedLocations: locations.rowCount,
       deletedTokens: tokens.rowCount,
       deletedAudits: audits.rowCount,
+      deletedPlatformAudits: platformAudits.rowCount,
       recurringOrdersGenerated: recurringResults.filter((item) => item.status === 'generated').length,
       recurringOrdersWithError: recurringResults.filter((item) => item.status === 'error' || item.status === 'failed').length
     });

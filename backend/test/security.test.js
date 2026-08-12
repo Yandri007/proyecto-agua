@@ -10,7 +10,31 @@ const { getCompanyModules, requireModule } = require('../utils/modules');
 const { nextScheduledDate } = require('../utils/recurringOrders');
 const { parseDatabaseUrl, databaseConnectionFromEnv } = require('../utils/databaseConnection');
 const { isTlsDatabaseClient } = require('../config/database');
+const { requireCurrentPlatformPassword } = require('../middleware/platformAuth');
 const crypto = require('crypto');
+
+test('la consola global exige reemplazar la contrasena temporal', () => {
+  let nextCalled = false;
+  const response = {
+    statusCode: null,
+    payload: null,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { this.payload = payload; return this; }
+  };
+  requireCurrentPlatformPassword({
+    path: '/companies',
+    platformAdmin: { debe_cambiar_password: true }
+  }, response, () => { nextCalled = true; });
+  assert.equal(nextCalled, false);
+  assert.equal(response.statusCode, 403);
+  assert.equal(response.payload.code, 'PASSWORD_CHANGE_REQUIRED');
+
+  requireCurrentPlatformPassword({
+    path: '/change-password',
+    platformAdmin: { debe_cambiar_password: true }
+  }, response, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+});
 
 test('parseCookies separa y decodifica cookies sin exponer la sesión', () => {
   assert.deepEqual(

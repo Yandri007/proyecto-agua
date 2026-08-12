@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaControl | Plataforma</title>
+    <link rel="stylesheet" href="/assets/inter.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <script src="/assets/safe-ui.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root { --ink:#102f40; --muted:#607584; --line:#dce5ea; --surface:#fff; --page:#f3f7f8; --cyan:#0089a7; --cyan-dark:#006d86; --green:#21845a; --amber:#b36b00; --red:#b63f3f; }
+        body { min-height:100vh; background:var(--page); color:var(--ink); font-family:'Inter',sans-serif; }
+        button,input,select { font:inherit; }
+        button { cursor:pointer; }
+        .hidden { display:none !important; }
+        .login-shell { min-height:100vh; display:grid; grid-template-columns:minmax(320px,460px) 1fr; background:#e8f3f5; }
+        .login-panel { display:flex; flex-direction:column; justify-content:center; padding:clamp(34px,6vw,72px); background:#fff; border-right:1px solid var(--line); }
+        .brand { display:flex; align-items:center; gap:12px; font-size:22px; font-weight:800; margin-bottom:44px; }
+        .brand img { width:36px; height:36px; }
+        .brand span { color:var(--cyan); }
+        .login-panel h1 { font-size:30px; line-height:1.2; margin-bottom:10px; }
+        .login-panel p { color:var(--muted); line-height:1.6; margin-bottom:28px; }
+        .field { display:grid; gap:7px; margin-bottom:16px; }
+        .field label { font-size:13px; font-weight:700; color:#385363; }
+        .field input,.field select { width:100%; min-height:44px; border:1px solid #b9c9d1; border-radius:6px; padding:10px 12px; background:#fff; color:var(--ink); }
+        .field input:focus,.field select:focus { outline:3px solid rgba(0,137,167,.14); border-color:var(--cyan); }
+        .primary,.secondary,.danger,.icon-button { min-height:42px; border-radius:6px; border:0; font-weight:700; }
+        .primary { width:100%; background:var(--cyan); color:white; padding:10px 16px; }
+        .primary:hover { background:var(--cyan-dark); }
+        .secondary { background:#e8f1f4; color:var(--ink); padding:9px 14px; }
+        .danger { background:#fff0f0; color:var(--red); padding:9px 14px; }
+        .login-error { min-height:22px; color:var(--red); font-size:13px; margin-top:12px; }
+        .login-context { position:relative; overflow:hidden; background:linear-gradient(135deg,#0d3b4d,#087f96); color:#fff; display:flex; align-items:flex-end; padding:70px; }
+        .login-context::before { content:""; position:absolute; inset:0; opacity:.16; background-image:linear-gradient(rgba(255,255,255,.4) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.4) 1px,transparent 1px); background-size:48px 48px; }
+        .context-copy { position:relative; max-width:610px; }
+        .context-copy small { text-transform:uppercase; font-weight:800; letter-spacing:1.2px; opacity:.8; }
+        .context-copy h2 { font-size:clamp(34px,5vw,62px); line-height:1.05; margin:14px 0 20px; }
+        .context-copy p { max-width:520px; font-size:17px; line-height:1.65; opacity:.86; }
+        .app-shell { min-height:100vh; }
+        .sidebar { position:fixed; inset:0 auto 0 0; width:248px; background:#0d3446; color:white; padding:24px 16px; display:flex; flex-direction:column; }
+        .sidebar .brand { margin:0 8px 34px; font-size:19px; }
+        .owner-tag { margin:-23px 56px 28px; color:#8bc9d5; font-size:11px; font-weight:700; text-transform:uppercase; }
+        .nav { display:grid; gap:5px; }
+        .nav button { min-height:44px; width:100%; border:0; border-radius:6px; color:#c6d8df; background:transparent; display:flex; align-items:center; gap:12px; padding:10px 13px; text-align:left; }
+        .nav button i { width:20px; text-align:center; }
+        .nav button.active,.nav button:hover { background:#16526a; color:white; }
+        .sidebar-foot { margin-top:auto; border-top:1px solid rgba(255,255,255,.12); padding-top:16px; }
+        .profile { padding:0 10px 14px; }
+        .profile strong,.profile small { display:block; overflow:hidden; text-overflow:ellipsis; }
+        .profile small { color:#9eb9c4; margin-top:3px; }
+        .logout { width:100%; min-height:40px; background:transparent; border:1px solid rgba(255,255,255,.2); color:white; border-radius:6px; }
+        .main { margin-left:248px; min-height:100vh; }
+        .topbar { height:72px; background:white; border-bottom:1px solid var(--line); padding:0 30px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:10; }
+        .topbar h1 { font-size:19px; }
+        .live { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
+        .live::before { content:""; width:8px; height:8px; border-radius:50%; background:#39b979; }
+        .content { padding:28px 30px 50px; max-width:1540px; margin:auto; }
+        .view { display:none; }
+        .view.active { display:block; }
+        .view-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:22px; }
+        .view-heading h2 { font-size:24px; margin-bottom:5px; }
+        .view-heading p { color:var(--muted); }
+        .stats { display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:14px; margin-bottom:24px; }
+        .stat { min-height:126px; background:white; border:1px solid var(--line); border-radius:8px; padding:19px; display:flex; flex-direction:column; justify-content:space-between; }
+        .stat-top { display:flex; justify-content:space-between; color:var(--muted); font-size:13px; font-weight:700; }
+        .stat-top i { color:var(--cyan); font-size:18px; }
+        .stat-value { font-size:30px; font-weight:800; }
+        .summary-band { display:grid; grid-template-columns:1.25fr .75fr; gap:14px; }
+        .panel { background:white; border:1px solid var(--line); border-radius:8px; }
+        .panel-header { padding:18px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:16px; }
+        .panel-header h3 { font-size:16px; }
+        .health-list { padding:6px 20px; }
+        .health-row { display:flex; justify-content:space-between; gap:20px; padding:16px 0; border-bottom:1px solid #edf2f4; }
+        .health-row:last-child { border:0; }
+        .health-row span { color:var(--muted); }
+        .amount { padding:26px 20px; font-size:38px; font-weight:800; color:var(--green); }
+        .amount small { font-size:13px; color:var(--muted); display:block; font-weight:500; margin-top:8px; }
+        .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+        .search { flex:1; min-width:240px; position:relative; }
+        .search i { position:absolute; left:13px; top:14px; color:#718793; }
+        .search input,.toolbar select { height:44px; border:1px solid #bacbd3; border-radius:6px; background:white; }
+        .search input { width:100%; padding:9px 12px 9px 38px; }
+        .toolbar select { min-width:160px; padding:8px 12px; }
+        .table-wrap { overflow:auto; }
+        table { width:100%; border-collapse:collapse; min-width:980px; }
+        th { padding:13px 16px; background:#f7fafb; color:#58707c; font-size:12px; text-transform:uppercase; text-align:left; }
+        td { padding:15px 16px; border-top:1px solid #e8eef1; font-size:14px; vertical-align:middle; }
+        td strong,td small { display:block; }
+        td small { color:var(--muted); margin-top:4px; }
+        .badge { display:inline-flex; align-items:center; min-height:25px; padding:4px 9px; border-radius:20px; font-size:11px; font-weight:800; text-transform:capitalize; }
+        .badge.activa,.badge.active { background:#e3f5eb; color:#1c744d; }
+        .badge.prueba { background:#e3f3f8; color:#08738a; }
+        .badge.suspendida,.badge.vencida { background:#fff1de; color:#995d00; }
+        .badge.archivada,.badge.cancelada { background:#f1f3f4; color:#5f6e75; }
+        .icon-button { width:38px; background:#eaf2f5; color:var(--ink); }
+        .empty { text-align:center; color:var(--muted); padding:38px; }
+        .modal { position:fixed; inset:0; background:rgba(5,27,37,.62); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
+        .modal-card { width:min(620px,100%); max-height:90vh; overflow:auto; background:white; border-radius:8px; box-shadow:0 22px 70px rgba(0,0,0,.25); }
+        .modal-head { padding:20px 22px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+        .modal-head h2 { font-size:18px; }
+        .close { width:38px; height:38px; border:0; background:#eef3f5; border-radius:6px; }
+        .modal-body { padding:22px; }
+        .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+        .wide { grid-column:1/-1; }
+        .module-list { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0 20px; }
+        .module-option { border:1px solid var(--line); border-radius:6px; padding:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .modal-actions { border-top:1px solid var(--line); padding:16px 22px; display:flex; justify-content:flex-end; gap:10px; }
+        .modal-actions .primary { width:auto; }
+        .notice { padding:12px 14px; border-left:4px solid var(--amber); background:#fff7e9; color:#744900; margin-bottom:18px; line-height:1.5; font-size:13px; }
+        .toast { position:fixed; right:24px; bottom:24px; z-index:200; max-width:380px; padding:13px 16px; border-radius:6px; color:#fff; background:var(--green); box-shadow:0 10px 30px rgba(0,0,0,.18); }
+        .toast.error { background:var(--red); }
+        @media(max-width:1000px){ .stats{grid-template-columns:repeat(2,1fr)} .summary-band{grid-template-columns:1fr} }
+        @media(max-width:760px){ .login-shell{grid-template-columns:1fr}.login-context{display:none}.sidebar{width:72px;padding:20px 8px}.sidebar .brand{margin:0 auto 32px}.sidebar .brand strong,.owner-tag,.nav span,.profile{display:none}.nav button{justify-content:center;padding:10px}.main{margin-left:72px}.topbar{padding:0 16px}.content{padding:20px 14px 40px}.stats{grid-template-columns:1fr}.view-heading{align-items:flex-start;flex-direction:column}.form-grid,.module-list{grid-template-columns:1fr}.wide{grid-column:auto}.live{display:none} }
+    </style>
+</head>
+<body>
+    <main id="loginView" class="login-shell">
+        <section class="login-panel">
+            <div class="brand"><img src="/assets/brand/aquacontrol-mark.svg" alt=""><strong>Aqua<span>Control</span></strong></div>
+            <h1>Administración de plataforma</h1>
+            <p>Acceso reservado para el propietario del servicio AquaControl.</p>
+            <form id="loginForm">
+                <div class="field"><label for="loginEmail">Correo</label><input id="loginEmail" type="email" autocomplete="username" required></div>
+                <div class="field"><label for="loginPassword">Contraseña</label><input id="loginPassword" type="password" autocomplete="current-password" required></div>
+                <button class="primary" type="submit"><i class="fas fa-arrow-right-to-bracket"></i> Ingresar</button>
+                <div id="loginError" class="login-error" role="alert"></div>
+            </form>
+        </section>
+        <section class="login-context">
+            <div class="context-copy"><small>Operación multiempresa</small><h2>Tu negocio SaaS bajo control.</h2><p>Empresas, pruebas, suscripciones y módulos en un espacio separado de la operación diaria de cada distribuidora.</p></div>
+        </section>
+    </main>
+
+    <div id="appView" class="app-shell hidden">
+        <aside class="sidebar">
+            <div class="brand"><img src="/assets/brand/aquacontrol-mark.svg" alt=""><strong>Aqua<span>Control</span></strong></div>
+            <div class="owner-tag">Plataforma</div>
+            <nav class="nav">
+                <button class="active" data-view="resumen"><i class="fas fa-chart-line"></i><span>Resumen</span></button>
+                <button data-view="empresas"><i class="fas fa-building"></i><span>Empresas</span></button>
+                <button data-view="auditoria"><i class="fas fa-shield-halved"></i><span>Auditoría</span></button>
+            </nav>
+            <div class="sidebar-foot">
+                <div class="profile"><strong id="ownerName"></strong><small id="ownerEmail"></small></div>
+                <button id="logoutButton" class="logout" title="Cerrar sesión"><i class="fas fa-arrow-right-from-bracket"></i> <span>Salir</span></button>
+            </div>
+        </aside>
+        <div class="main">
+            <header class="topbar"><h1 id="viewTitle">Resumen ejecutivo</h1><div class="live">Plataforma operativa</div></header>
+            <div class="content">
+                <section id="view-resumen" class="view active">
+                    <div class="view-heading"><div><h2>Estado del negocio</h2><p>Visión general de clientes, actividad y suscripciones.</p></div><button id="refreshSummary" class="secondary"><i class="fas fa-rotate"></i> Actualizar</button></div>
+                    <div class="stats">
+                        <div class="stat"><div class="stat-top"><span>Empresas activas</span><i class="fas fa-building-circle-check"></i></div><div id="statCompanies" class="stat-value">0</div></div>
+                        <div class="stat"><div class="stat-top"><span>Suscripciones</span><i class="fas fa-credit-card"></i></div><div id="statSubscriptions" class="stat-value">0</div></div>
+                        <div class="stat"><div class="stat-top"><span>Usuarios activos</span><i class="fas fa-users"></i></div><div id="statUsers" class="stat-value">0</div></div>
+                        <div class="stat"><div class="stat-top"><span>Pedidos últimos 30 días</span><i class="fas fa-box"></i></div><div id="statOrders" class="stat-value">0</div></div>
+                    </div>
+                    <div class="summary-band">
+                        <div class="panel"><div class="panel-header"><h3>Cartera de empresas</h3></div><div class="health-list"><div class="health-row"><span>Pruebas activas</span><strong id="trialCompanies">0</strong></div><div class="health-row"><span>Requieren atención</span><strong id="attentionCompanies">0</strong></div><div class="health-row"><span>Total histórico</span><strong id="totalCompanies">0</strong></div></div></div>
+                        <div class="panel"><div class="panel-header"><h3>Ingreso mensual estimado</h3></div><div id="estimatedRevenue" class="amount">$0<small>Calculado con suscripciones activas</small></div></div>
+                    </div>
+                </section>
+
+                <section id="view-empresas" class="view">
+                    <div class="view-heading"><div><h2>Empresas</h2><p>Administra acceso, prueba, plan y módulos de cada cliente.</p></div></div>
+                    <div class="toolbar"><div class="search"><i class="fas fa-search"></i><input id="companySearch" placeholder="Buscar por empresa o código"></div><select id="companyStatus"><option value="">Todos los estados</option><option value="activa">Activas</option><option value="suspendida">Suspendidas</option><option value="archivada">Archivadas</option></select><button id="searchCompanies" class="secondary"><i class="fas fa-filter"></i> Filtrar</button></div>
+                    <div class="panel table-wrap"><table><thead><tr><th>Empresa</th><th>Estado</th><th>Plan</th><th>Uso</th><th>Equipo</th><th>Último acceso</th><th></th></tr></thead><tbody id="companiesBody"></tbody></table></div>
+                </section>
+
+                <section id="view-auditoria" class="view">
+                    <div class="view-heading"><div><h2>Auditoría de plataforma</h2><p>Registro de acciones realizadas sobre las empresas.</p></div><button id="refreshAudit" class="secondary"><i class="fas fa-rotate"></i> Actualizar</button></div>
+                    <div class="panel table-wrap"><table><thead><tr><th>Fecha</th><th>Administrador</th><th>Empresa</th><th>Acción</th><th>Detalle</th></tr></thead><tbody id="auditBody"></tbody></table></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="companyModal" class="modal hidden" aria-modal="true" role="dialog">
+        <div class="modal-card">
+            <div class="modal-head"><div><h2 id="companyModalTitle">Configurar empresa</h2><small id="companyModalSlug"></small></div><button id="closeCompanyModal" class="close" title="Cerrar"><i class="fas fa-xmark"></i></button></div>
+            <form id="companyForm">
+                <div class="modal-body">
+                    <input id="companyId" type="hidden">
+                    <div class="form-grid">
+                        <div class="field"><label for="companyState">Acceso a la plataforma</label><select id="companyState"><option value="activa">Activa</option><option value="suspendida">Suspendida</option><option value="archivada">Archivada</option></select></div>
+                        <div class="field"><label for="companyPlan">Plan</label><select id="companyPlan"><option value="prueba">Prueba</option><option value="basico">Básico</option><option value="profesional">Profesional</option></select></div>
+                        <div class="field"><label for="companySubscription">Estado de suscripción</label><select id="companySubscription"><option value="prueba">Prueba</option><option value="activa">Activa</option><option value="gracia">Gracia</option><option value="vencida">Vencida</option><option value="cancelada">Cancelada</option></select></div>
+                        <div class="field"><label for="companyTrial">Fin de prueba</label><input id="companyTrial" type="datetime-local" required></div>
+                        <div class="field"><label for="companyPeriod">Fin del periodo o gracia</label><input id="companyPeriod" type="datetime-local"></div>
+                        <div class="field wide"><label><input id="companyClientRegistration" type="checkbox"> Permitir que nuevos clientes se registren con el código de la empresa</label></div>
+                    </div>
+                    <div class="field"><label>Módulos contratados</label></div>
+                    <div class="module-list">
+                        <label class="module-option"><span>Ventas en ruta</span><input id="moduleSales" type="checkbox"></label>
+                        <label class="module-option"><span>Recursos Humanos</span><input id="moduleHr" type="checkbox"></label>
+                        <label class="module-option"><span>Planta y calidad</span><input id="modulePlant" type="checkbox"></label>
+                        <label class="module-option"><span>Logística y flota</span><input id="moduleLogistics" type="checkbox"></label>
+                    </div>
+                    <div class="notice"><strong>Control de acceso:</strong> suspender o archivar una empresa cierra su acceso en la siguiente validación de sesión. Sus datos permanecen conservados.</div>
+                </div>
+                <div class="modal-actions"><button id="cancelCompany" class="secondary" type="button">Cancelar</button><button class="primary" type="submit"><i class="fas fa-floppy-disk"></i> Guardar cambios</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="passwordModal" class="modal hidden" aria-modal="true" role="dialog">
+        <div class="modal-card" style="max-width:500px">
+            <div class="modal-head"><h2>Protege tu cuenta</h2></div>
+            <form id="passwordForm">
+                <div class="modal-body"><div class="notice">Estás usando una contraseña temporal. Debes reemplazarla antes de administrar empresas.</div><div class="field"><label for="currentPassword">Contraseña temporal</label><input id="currentPassword" type="password" autocomplete="current-password" required></div><div class="field"><label for="newPassword">Nueva contraseña</label><input id="newPassword" type="password" minlength="14" maxlength="128" autocomplete="new-password" required></div><div class="field"><label for="confirmPassword">Confirmar contraseña</label><input id="confirmPassword" type="password" minlength="14" maxlength="128" autocomplete="new-password" required></div><div id="passwordError" class="login-error"></div></div>
+                <div class="modal-actions"><button class="primary" type="submit">Cambiar contraseña</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <script nonce="{{CSP_NONCE}}">
+        const API = '/api/platform';
+        const { escapeHtml } = AquaUI;
+        let platformAdmin = null;
+        let companies = [];
+
+        const byId = (id) => document.getElementById(id);
+        const formatDate = (value) => value ? new Intl.DateTimeFormat('es-EC', { dateStyle:'medium', timeStyle:'short' }).format(new Date(value)) : 'Sin actividad';
+        const dateTimeInput = (value) => {
+            if (!value) return '';
+            const date = new Date(value);
+            const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+            return local.toISOString().slice(0,16);
+        };
+        const dateTimeValue = (id) => byId(id).value ? new Date(byId(id).value).toISOString() : null;
+        const showToast = (message, type = 'success') => {
+            const toast = byId('toast');
+            toast.textContent = message;
+            toast.className = `toast${type === 'error' ? ' error' : ''}`;
+            clearTimeout(showToast.timer);
+            showToast.timer = setTimeout(() => toast.classList.add('hidden'), 3500);
+        };
+        const request = async (path, options = {}) => {
+            const response = await fetch(`${API}${path}`, { headers:{ 'Content-Type':'application/json', ...(options.headers || {}) }, ...options });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const error = new Error(data.error || 'No fue posible completar la solicitud');
+                error.status = response.status;
+                error.code = data.code;
+                throw error;
+            }
+            return data;
+        };
+
+        function showApplication(admin) {
+            platformAdmin = admin;
+            byId('loginView').classList.add('hidden');
+            byId('appView').classList.remove('hidden');
+            byId('ownerName').textContent = admin.nombre;
+            byId('ownerEmail').textContent = admin.email;
+            byId('passwordModal').classList.toggle('hidden', !admin.debe_cambiar_password);
+            if (!admin.debe_cambiar_password) loadSummary();
+        }
+
+        async function loadSession() {
+            try { showApplication((await request('/me')).admin); }
+            catch (error) { byId('loginView').classList.remove('hidden'); }
+        }
+
+        async function login(event) {
+            event.preventDefault();
+            const button = event.submitter;
+            button.disabled = true;
+            byId('loginError').textContent = '';
+            try {
+                const result = await request('/login', { method:'POST', body:JSON.stringify({ email:byId('loginEmail').value.trim(), password:byId('loginPassword').value }) });
+                byId('loginPassword').value = '';
+                showApplication(result.admin);
+            } catch (error) { byId('loginError').textContent = error.message; }
+            finally { button.disabled = false; }
+        }
+
+        async function changePassword(event) {
+            event.preventDefault();
+            byId('passwordError').textContent = '';
+            if (byId('newPassword').value !== byId('confirmPassword').value) {
+                byId('passwordError').textContent = 'Las contraseñas no coinciden'; return;
+            }
+            try {
+                const result = await request('/change-password', { method:'POST', body:JSON.stringify({ password_actual:byId('currentPassword').value, password_nueva:byId('newPassword').value }) });
+                platformAdmin = result.admin;
+                byId('passwordModal').classList.add('hidden');
+                event.target.reset();
+                showToast('Contraseña actualizada');
+                loadSummary();
+            } catch (error) { byId('passwordError').textContent = error.message; }
+        }
+
+        async function loadSummary() {
+            try {
+                const data = await request('/summary');
+                byId('statCompanies').textContent = data.empresas_activas;
+                byId('statSubscriptions').textContent = data.suscripciones_activas;
+                byId('statUsers').textContent = data.usuarios_activos;
+                byId('statOrders').textContent = data.pedidos_30d;
+                byId('trialCompanies').textContent = data.pruebas_activas;
+                byId('attentionCompanies').textContent = data.requieren_atencion;
+                byId('totalCompanies').textContent = data.empresas_total;
+                byId('estimatedRevenue').innerHTML = `$${Number(data.ingreso_mensual_estimado).toFixed(0)}<small>Calculado con suscripciones activas</small>`;
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function loadCompanies() {
+            const params = new URLSearchParams();
+            if (byId('companySearch').value.trim()) params.set('q', byId('companySearch').value.trim());
+            if (byId('companyStatus').value) params.set('estado', byId('companyStatus').value);
+            try {
+                companies = await request(`/companies?${params}`);
+                const body = byId('companiesBody');
+                body.innerHTML = companies.length ? companies.map((company) => `
+                    <tr><td><strong>${escapeHtml(company.nombre)}</strong><small>${escapeHtml(company.slug)}</small></td>
+                    <td><span class="badge ${escapeHtml(company.estado)}">${escapeHtml(company.estado)}</span></td>
+                    <td><strong>${escapeHtml(company.plan)}</strong><small>${escapeHtml(company.suscripcion_estado)}</small></td>
+                    <td><strong>${company.pedidos_mes} pedidos</strong><small>Este mes</small></td>
+                    <td><strong>${company.usuarios} usuarios</strong><small>${company.repartidores} repartidores</small></td>
+                    <td>${escapeHtml(formatDate(company.ultimo_acceso))}</td>
+                    <td><button class="icon-button edit-company" data-id="${company.id}" title="Configurar empresa"><i class="fas fa-sliders"></i></button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">No se encontraron empresas.</td></tr>';
+                document.querySelectorAll('.edit-company').forEach((button) => button.addEventListener('click', () => openCompany(Number(button.dataset.id))));
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        function openCompany(id) {
+            const company = companies.find((item) => item.id === id);
+            if (!company) return;
+            byId('companyId').value = company.id;
+            byId('companyModalTitle').textContent = company.nombre;
+            byId('companyModalSlug').textContent = company.slug;
+            byId('companyState').value = company.estado;
+            byId('companyPlan').value = company.plan;
+            byId('companySubscription').value = company.suscripcion_estado;
+            byId('companyTrial').value = dateTimeInput(company.prueba_hasta);
+            byId('companyPeriod').value = dateTimeInput(company.periodo_hasta);
+            byId('companyClientRegistration').checked = company.registro_clientes_habilitado;
+            byId('moduleSales').checked = Boolean(company.modulos.ventas_ruta);
+            byId('moduleHr').checked = Boolean(company.modulos.recursos_humanos);
+            byId('modulePlant').checked = Boolean(company.modulos.planta);
+            byId('moduleLogistics').checked = Boolean(company.modulos.logistica);
+            byId('companyModal').classList.remove('hidden');
+        }
+
+        async function saveCompany(event) {
+            event.preventDefault();
+            const id = Number(byId('companyId').value);
+            if (byId('companySubscription').value === 'gracia' && !byId('companyPeriod').value) {
+                showToast('Define la fecha de finalizacion del periodo de gracia', 'error'); return;
+            }
+            const body = {
+                estado:byId('companyState').value,
+                plan:byId('companyPlan').value,
+                suscripcion_estado:byId('companySubscription').value,
+                prueba_hasta:dateTimeValue('companyTrial'),
+                periodo_hasta:dateTimeValue('companyPeriod'),
+                registro_clientes_habilitado:byId('companyClientRegistration').checked,
+                modulos:{ ventas_ruta:byId('moduleSales').checked, recursos_humanos:byId('moduleHr').checked, planta:byId('modulePlant').checked, logistica:byId('moduleLogistics').checked }
+            };
+            try {
+                await request(`/companies/${id}`, { method:'PATCH', body:JSON.stringify(body) });
+                byId('companyModal').classList.add('hidden');
+                showToast('Empresa actualizada');
+                await Promise.all([loadCompanies(), loadSummary()]);
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function loadAudit() {
+            try {
+                const rows = await request('/audit');
+                byId('auditBody').innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHtml(formatDate(row.creado_en))}</td><td>${escapeHtml(row.administrador || 'Sistema')}</td><td>${escapeHtml(row.empresa || 'Plataforma')}</td><td>${escapeHtml(row.accion)}</td><td><small>${escapeHtml(JSON.stringify(row.detalles))}</small></td></tr>`).join('') : '<tr><td colspan="5" class="empty">Aún no hay acciones registradas.</td></tr>';
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        function switchView(name) {
+            document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`));
+            document.querySelectorAll('.nav button').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
+            byId('viewTitle').textContent = { resumen:'Resumen ejecutivo', empresas:'Gestión de empresas', auditoria:'Auditoría de plataforma' }[name];
+            if (name === 'resumen') loadSummary();
+            if (name === 'empresas') loadCompanies();
+            if (name === 'auditoria') loadAudit();
+        }
+
+        byId('loginForm').addEventListener('submit', login);
+        byId('passwordForm').addEventListener('submit', changePassword);
+        byId('companyForm').addEventListener('submit', saveCompany);
+        byId('refreshSummary').addEventListener('click', loadSummary);
+        byId('refreshAudit').addEventListener('click', loadAudit);
+        byId('searchCompanies').addEventListener('click', loadCompanies);
+        byId('companySearch').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadCompanies(); });
+        byId('companyStatus').addEventListener('change', loadCompanies);
+        byId('closeCompanyModal').addEventListener('click', () => byId('companyModal').classList.add('hidden'));
+        byId('cancelCompany').addEventListener('click', () => byId('companyModal').classList.add('hidden'));
+        document.querySelectorAll('.nav button').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
+        byId('logoutButton').addEventListener('click', async () => { await request('/logout', { method:'POST' }); location.reload(); });
+        loadSession();
+    </script>
+</body>
+</html>

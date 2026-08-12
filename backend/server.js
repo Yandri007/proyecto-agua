@@ -26,6 +26,7 @@ const ventasRoutes = require('./routes/ventas.routes');
 const organizacionRoutes = require('./routes/organizacion.routes');
 const logisticaRoutes = require('./routes/logistica.routes');
 const recurrentesRoutes = require('./routes/recurrentes.routes');
+const platformRoutes = require('./routes/platform.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -123,7 +124,7 @@ app.use((req, res, next) => cors({
     return callback(null, false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 })(req, res, next));
 
@@ -163,7 +164,8 @@ app.use((req, res, next) => {
     return next();
   }
   const source = req.get('origin') || req.get('referer');
-  const hasCookieSession = Boolean(parseCookies(req.get('cookie'))[env.sessionCookie]);
+  const cookies = parseCookies(req.get('cookie'));
+  const hasCookieSession = Boolean(cookies[env.sessionCookie] || cookies[env.platformSessionCookie]);
   const usesBearerToken = /^Bearer\s+\S+/i.test(req.get('authorization') || '');
   if ((source && !isAllowedOrigin(source, req.get('host'))) || (!source && hasCookieSession && !usesBearerToken)) {
     return res.status(403).json({ error: 'Origen de solicitud no permitido' });
@@ -181,6 +183,7 @@ app.use('/api/ventas', ventasRoutes);
 app.use('/api/organizacion', organizacionRoutes);
 app.use('/api/logistica', logisticaRoutes);
 app.use('/api/recurrentes', recurrentesRoutes);
+app.use('/api/platform', platformRoutes);
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -241,7 +244,8 @@ const htmlTemplates = new Map([
   ['admin', fs.readFileSync(path.join(frontendRoot, 'admin/index.html'), 'utf8')],
   ['cliente', fs.readFileSync(path.join(frontendRoot, 'cliente/app.html'), 'utf8')],
   ['repartidor', fs.readFileSync(path.join(frontendRoot, 'repartidor/index.html'), 'utf8')],
-  ['equipo', fs.readFileSync(path.join(frontendRoot, 'equipo/index.html'), 'utf8')]
+  ['equipo', fs.readFileSync(path.join(frontendRoot, 'equipo/index.html'), 'utf8')],
+  ['plataforma', fs.readFileSync(path.join(frontendRoot, 'plataforma/index.html'), 'utf8')]
 ]);
 
 const sendHtml = (templateName) => (req, res) => {
@@ -255,6 +259,7 @@ app.get(['/admin', '/admin/', '/admin/index.html'], sendHtml('admin'));
 app.get(['/cliente/app.html'], sendHtml('cliente'));
 app.get(['/repartidor', '/repartidor/', '/repartidor/index.html'], sendHtml('repartidor'));
 app.get(['/equipo', '/equipo/', '/equipo/index.html'], sendHtml('equipo'));
+app.get(['/plataforma', '/plataforma/', '/plataforma/index.html'], sendHtml('plataforma'));
 
 app.use(express.static(frontendRoot, {
   etag: true,

@@ -25,6 +25,10 @@ services:
         generateValue: true
       - key: RESEND_API_KEY
         sync: false
+      - key: PLATFORM_ADMIN_EMAIL
+        sync: false
+      - key: PLATFORM_ADMIN_PASSWORD
+        sync: false
       - key: EMAIL_FROM
         value: AquaControl <onboarding@resend.dev>
       - key: KUSHKI_ENVIRONMENT

@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
 const env = require('./env');
 const logger = require('../utils/logger');
 
@@ -69,6 +70,41 @@ const initializeDatabase = async () => {
       DEFAULT '{"ventas_ruta": true, "recursos_humanos": false, "planta": false, "logistica": false}'::jsonb`);
     await client.query(`UPDATE empresas
       SET modulos = '{"ventas_ruta": true, "recursos_humanos": false, "planta": false, "logistica": false}'::jsonb || modulos`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS administradores_plataforma (
+        id SERIAL PRIMARY KEY,
+        nombre VARCHAR(100) NOT NULL,
+        email VARCHAR(160) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        estado VARCHAR(20) NOT NULL DEFAULT 'activo',
+        sesion_version INT NOT NULL DEFAULT 1,
+        debe_cambiar_password BOOLEAN NOT NULL DEFAULT TRUE,
+        ultimo_acceso_en TIMESTAMPTZ,
+        creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS auditoria_plataforma (
+        id BIGSERIAL PRIMARY KEY,
+        administrador_id INT REFERENCES administradores_plataforma(id) ON DELETE SET NULL,
+        empresa_id INT REFERENCES empresas(id) ON DELETE SET NULL,
+        accion VARCHAR(100) NOT NULL,
+        detalles JSONB NOT NULL DEFAULT '{}'::jsonb,
+        creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    if (env.platformAdminBootstrapEmail && env.platformAdminBootstrapPassword) {
+      const passwordHash = await bcrypt.hash(env.platformAdminBootstrapPassword, 12);
+      await client.query(
+        `INSERT INTO administradores_plataforma (nombre, email, password)
+         VALUES ('Propietario AquaControl', $1, $2)
+         ON CONFLICT (email) DO NOTHING`,
+        [env.platformAdminBootstrapEmail, passwordHash]
+      );
+    }
 
     const empresaResult = await client.query(
       `INSERT INTO empresas (nombre, slug)
@@ -519,6 +555,8 @@ const initializeDatabase = async () => {
     await client.query('CREATE INDEX IF NOT EXISTS pedidos_recurrentes_cliente_idx ON pedidos_recurrentes (cliente_id, estado)');
     await client.query('CREATE INDEX IF NOT EXISTS ejecuciones_recurrentes_fecha_idx ON ejecuciones_pedidos_recurrentes (fecha_programada DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS empresas_estado_plan_idx ON empresas (estado, plan)');
+    await client.query('CREATE INDEX IF NOT EXISTS auditoria_plataforma_fecha_idx ON auditoria_plataforma (creado_en DESC)');
+    await client.query('CREATE INDEX IF NOT EXISTS auditoria_plataforma_empresa_idx ON auditoria_plataforma (empresa_id, creado_en DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS ubicaciones_empresa_actualizacion_idx ON ubicaciones_repartidores (empresa_id, actualizado_en DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS tokens_usuario_tipo_idx ON tokens_usuarios (usuario_id, tipo, expira_en DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS auditoria_empresa_fecha_idx ON auditoria (empresa_id, creado_en DESC)');

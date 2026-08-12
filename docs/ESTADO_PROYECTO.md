@@ -1,6 +1,6 @@
 # Estado de AquaControl
 
-Última actualización: 10 de agosto de 2026.
+Última actualización: 12 de agosto de 2026.
 
 ## Decisión de producto
 
@@ -70,6 +70,9 @@ funcionalidad.
 - Conexion mediante `DATABASE_URL` preparada para Supabase, con pool limitado,
   TLS obligatorio en produccion y conexion directa separada para respaldos.
 - Blueprint de Render, GitHub Actions y prueba remota de despliegue preparados.
+- Consola independiente del propietario en `/plataforma/`, con credencial y
+  sesión separadas, cambio obligatorio de contraseña temporal, resumen del SaaS,
+  gestión de empresas, planes, pruebas, módulos y auditoría global.
 
 ## Cuentas locales de demostración
 
@@ -97,8 +100,8 @@ El comando rechaza su ejecución en producción.
 
 ## Verificación realizada
 
-- `npm test`: 14 pruebas aprobadas.
-- `npm run check`: 7 interfaces y 5 scripts verificados.
+- `npm test`: 18 pruebas aprobadas.
+- `npm run check`: 8 interfaces y 6 scripts verificados.
 - `npm run test:integration`: identidad, recurrencias, módulos, personal, planta,
   flota, ventas, GPS, comprobantes, cierres, stock y sincronización de los cinco
   roles aprobados; incluye dos pedidos consecutivos a direcciones distintas,

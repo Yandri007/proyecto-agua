@@ -43,6 +43,8 @@ DB_SSL=true
 JWT_SECRET=secreto-aleatorio-de-32-o-mas-caracteres
 JWT_EXPIRES_IN=8h
 MONITORING_TOKEN=otro-secreto-independiente
+PLATFORM_ADMIN_EMAIL=propietario@dominio.example
+PLATFORM_ADMIN_PASSWORD=contrasena-temporal-de-14-o-mas-caracteres
 
 RESEND_API_KEY=re_...
 EMAIL_FROM=AquaControl <notificaciones@dominio.example>
@@ -60,6 +62,10 @@ BACKUP_DIR=/backups
 
 El proceso se detiene en producción si `APP_URL` no usa HTTPS,
 `ALLOWED_ORIGINS` está vacío, falta la clave JWT o faltan datos de PostgreSQL.
+
+La consola del propietario se publica en `/plataforma/`. La primera cuenta se
+crea desde las variables `PLATFORM_ADMIN_*` y obliga a reemplazar la contraseña
+temporal. Esta cuenta es independiente de los administradores de cada empresa.
 
 ## 3. Correo
 

@@ -95,10 +95,10 @@ const run = async () => {
   assert.equal(healthData.status, 'ok');
 
   const nonces = new Set();
-  for (const path of ['/', '/admin/', '/cliente/app.html', '/repartidor/', '/equipo/']) {
+  for (const path of ['/', '/admin/', '/cliente/app.html', '/repartidor/', '/equipo/', '/plataforma/']) {
     nonces.add(await verifyHtml(path));
   }
-  assert.equal(nonces.size, 5, 'Los documentos deben recibir nonces independientes');
+  assert.equal(nonces.size, 6, 'Los documentos deben recibir nonces independientes');
 
   for (const path of [
     '/assets/aquacontrol-ui.css',
@@ -113,6 +113,8 @@ const run = async () => {
 
   const anonymousSession = await get('/api/auth/me');
   assert.equal(anonymousSession.status, 401, 'La API acepto una sesion anonima');
+  const anonymousPlatformSession = await get('/api/platform/me');
+  assert.equal(anonymousPlatformSession.status, 401, 'La consola global acepto una sesion anonima');
   await verifyAuthenticatedSession();
   console.log(`Staging verificado correctamente en ${baseUrl}`);
 };
