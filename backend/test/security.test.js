@@ -9,6 +9,7 @@ const { isValidKushkiWebhook } = require('../routes/billing.routes');
 const { getCompanyModules, requireModule } = require('../utils/modules');
 const { nextScheduledDate } = require('../utils/recurringOrders');
 const { parseDatabaseUrl, databaseConnectionFromEnv } = require('../utils/databaseConnection');
+const { isTlsDatabaseClient } = require('../config/database');
 const crypto = require('crypto');
 
 test('parseCookies separa y decodifica cookies sin exponer la sesión', () => {
@@ -148,4 +149,14 @@ test('la conexion PostgreSQL administrada interpreta credenciales codificadas', 
     DATABASE_URL: 'postgresql://runtime:runtime@pooler.example.com/postgres',
     DATABASE_DIRECT_URL: 'postgresql://direct:direct@db.example.com/postgres'
   }, { preferDirect: true }).host, 'db.example.com');
+});
+
+test('la validacion TLS comprueba el socket real del cliente PostgreSQL', () => {
+  assert.equal(isTlsDatabaseClient({
+    connection: { stream: { encrypted: true } }
+  }), true);
+  assert.equal(isTlsDatabaseClient({
+    connection: { stream: { encrypted: false } }
+  }), false);
+  assert.equal(isTlsDatabaseClient({}), false);
 });

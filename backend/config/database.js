@@ -29,16 +29,15 @@ const columnExists = async (client, tableName, columnName) => {
   return result.rowCount > 0;
 };
 
+const isTlsDatabaseClient = (client) => (
+  client?.connection?.stream?.encrypted === true
+);
+
 const initializeDatabase = async () => {
   const client = await pool.connect();
   try {
-    if (env.nodeEnv === 'production') {
-      const transport = await client.query(
-        'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()'
-      );
-      if (transport.rows[0]?.ssl !== true) {
-        throw new Error('PostgreSQL no confirmo una conexion TLS activa');
-      }
+    if (env.nodeEnv === 'production' && !isTlsDatabaseClient(client)) {
+      throw new Error('El cliente PostgreSQL no establecio una conexion TLS activa');
     }
     await client.query('BEGIN');
 
@@ -544,3 +543,4 @@ const initializeDatabase = async () => {
 
 module.exports = pool;
 module.exports.initializeDatabase = initializeDatabase;
+module.exports.isTlsDatabaseClient = isTlsDatabaseClient;
