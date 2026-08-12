@@ -31,6 +31,7 @@ Rutas:
 
 - Sesión en cookie `HttpOnly`, invalidación global, permisos por rol y rate limits.
 - Verificación de correo y recuperación de contraseña con tokens de un solo uso.
+- Activación piloto asistida, con confirmación de identidad, enlace temporal y auditoría global.
 - Aislamiento multiempresa en HTTP, PostgreSQL y salas WebSocket.
 - Productos, inventario, pedidos, repartidores, entregas y confirmaciones.
 - Historial detallado y de solo lectura para repartidores.
@@ -129,12 +130,15 @@ guia de infraestructura esta en
 
 ## Proveedores opcionales
 
-Sin credenciales de Resend, los enlaces de verificación y recuperación se
-devuelven únicamente en desarrollo. En producción se requiere un dominio
-verificado y `RESEND_API_KEY`.
+El correo transaccional admite Brevo y Resend. `EMAIL_PROVIDER=auto` prioriza
+`BREVO_API_KEY` y usa `RESEND_API_KEY` como alternativa. Sin proveedor, los
+enlaces automáticos se devuelven únicamente en desarrollo; para pilotos sin
+dominio, el propietario puede generar enlaces privados desde
+`/plataforma/ > Activaciones` después de verificar la identidad por otro canal.
 
 Sin credenciales de Kushki, el panel muestra los planes pero no permite cobrar.
 La tarjeta se captura con Kajita y AquaControl no guarda PAN ni CVV. Consulte la
+[API de Brevo](https://developers.brevo.com/reference/sendtransacemail), la
 [API de correo de Resend](https://resend.com/docs/api-reference/emails/send-email)
 y las [suscripciones recurrentes de Kushki Ecuador](https://docs.kushki.com/ec/recurring-payments/overview/).
 
@@ -152,18 +156,22 @@ hosting pueda centralizarlos. La guía completa está en
 La comparación funcional y la hoja de ruta están en
 [`docs/ANALISIS_PRODUCTO.md`](docs/ANALISIS_PRODUCTO.md).
 
-## Pendientes externos para vender
+## Pendientes externos para producción comercial
 
 El software ya contiene la base técnica del SaaS. El lanzamiento comercial aún
 requiere:
 
-- Dominio, HTTPS, hosting, PostgreSQL administrado y almacenamiento externo de backups.
-- Cuenta Resend con dominio verificado.
+- Dominio propio, hosting sin suspensión y almacenamiento externo de backups.
+- Brevo o Resend con dominio de envío autenticado.
 - Afiliación Kushki, credenciales de producción y webhook configurado.
 - Razón social, RUC, domicilio, soporte y revisión legal en Ecuador.
 - Monitoreo externo, alertas, prueba de restauración y prueba de carga con el
   volumen comercial esperado.
 - Revisión independiente de seguridad antes de procesar clientes reales.
+
+Las demostraciones y los primeros pilotos controlados pueden operar con la URL
+de Render, Supabase y activación asistida. El procedimiento y sus límites están
+en [`docs/PILOTO_SIN_DOMINIO.md`](docs/PILOTO_SIN_DOMINIO.md).
 
 ## Arquitectura de despliegue
 

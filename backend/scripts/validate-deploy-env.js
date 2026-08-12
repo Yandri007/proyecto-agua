@@ -16,6 +16,14 @@ const allowedOrigins = value('ALLOWED_ORIGINS')
 
 if (renderUrl && !allowedOrigins.includes(renderUrl)) allowedOrigins.push(renderUrl);
 
+const emailProvider = value('EMAIL_PROVIDER') || 'auto';
+const emailProviderValid = ['auto', 'brevo', 'resend', 'off'].includes(emailProvider);
+const emailConfigured = Boolean(value('EMAIL_FROM')) && (
+  (emailProvider === 'brevo' && Boolean(value('BREVO_API_KEY')))
+  || (emailProvider === 'resend' && Boolean(value('RESEND_API_KEY')))
+  || (emailProvider === 'auto' && Boolean(value('BREVO_API_KEY') || value('RESEND_API_KEY')))
+);
+
 if (value('JWT_SECRET').length < 32) {
   errors.push('JWT_SECRET debe tener al menos 32 caracteres');
 }
@@ -52,8 +60,11 @@ if (isProduction) {
   if (value('MONITORING_TOKEN').length < 24) {
     errors.push('MONITORING_TOKEN debe tener al menos 24 caracteres');
   }
-  if (!value('RESEND_API_KEY') || !value('EMAIL_FROM')) {
-    errors.push('RESEND_API_KEY y EMAIL_FROM son obligatorios');
+  if (!emailProviderValid) {
+    errors.push('EMAIL_PROVIDER debe ser auto, brevo, resend u off');
+  }
+  if (!emailConfigured) {
+    errors.push('Configura EMAIL_FROM y la clave del proveedor indicado en EMAIL_PROVIDER');
   }
   if (value('ALLOW_DATABASE_RESTORE') === 'true') {
     errors.push('ALLOW_DATABASE_RESTORE debe permanecer deshabilitado');

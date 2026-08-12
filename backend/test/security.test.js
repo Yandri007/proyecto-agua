@@ -11,7 +11,58 @@ const { nextScheduledDate } = require('../utils/recurringOrders');
 const { parseDatabaseUrl, databaseConnectionFromEnv } = require('../utils/databaseConnection');
 const { isTlsDatabaseClient } = require('../config/database');
 const { requireCurrentPlatformPassword } = require('../middleware/platformAuth');
+const env = require('../config/env');
+const { configuredProvider, parseSender, sendEmail } = require('../utils/email');
 const crypto = require('crypto');
+
+test('el remitente se adapta al formato requerido por Brevo', () => {
+  assert.deepEqual(parseSender('AquaControl <avisos@example.com>'), {
+    name: 'AquaControl',
+    email: 'avisos@example.com'
+  });
+  assert.deepEqual(parseSender('avisos@example.com'), {
+    name: 'AquaControl',
+    email: 'avisos@example.com'
+  });
+});
+
+test('Brevo se puede usar sin retirar la configuracion de Resend', async () => {
+  const originalEmail = { ...env.email };
+  const originalFetch = global.fetch;
+  let request;
+  Object.assign(env.email, {
+    provider: 'auto',
+    brevoApiKey: 'brevo-test-key',
+    resendApiKey: 'resend-test-key',
+    from: 'AquaControl <avisos@example.com>',
+    replyTo: 'Soporte <soporte@example.com>'
+  });
+  global.fetch = async (url, options) => {
+    request = { url, options };
+    return { ok: true, json: async () => ({ messageId: 'brevo-message-1' }) };
+  };
+
+  try {
+    assert.equal(configuredProvider(), 'brevo');
+    const result = await sendEmail({
+      to: 'cliente@example.com',
+      subject: 'Prueba',
+      text: 'Contenido',
+      html: '<p>Contenido</p>',
+      idempotencyKey: 'test-message-1'
+    });
+    const payload = JSON.parse(request.options.body);
+    assert.equal(request.url, 'https://api.brevo.com/v3/smtp/email');
+    assert.equal(request.options.headers['api-key'], 'brevo-test-key');
+    assert.deepEqual(payload.sender, { name: 'AquaControl', email: 'avisos@example.com' });
+    assert.deepEqual(payload.replyTo, { name: 'Soporte', email: 'soporte@example.com' });
+    assert.deepEqual(payload.to, [{ email: 'cliente@example.com' }]);
+    assert.equal(result.provider, 'brevo');
+  } finally {
+    Object.assign(env.email, originalEmail);
+    global.fetch = originalFetch;
+  }
+});
 
 test('la consola global exige reemplazar la contrasena temporal', () => {
   let nextCalled = false;

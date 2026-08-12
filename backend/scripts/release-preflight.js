@@ -22,6 +22,13 @@ const allowedOrigins = value('ALLOWED_ORIGINS')
 if (renderUrl && !allowedOrigins.includes(renderUrl)) allowedOrigins.push(renderUrl);
 
 const emailFrom = value('EMAIL_FROM').toLowerCase();
+const emailProvider = value('EMAIL_PROVIDER') || 'auto';
+const emailProviderValid = ['auto', 'brevo', 'resend'].includes(emailProvider);
+const emailCredentialsPresent = (
+  (emailProvider === 'brevo' && Boolean(value('BREVO_API_KEY')))
+  || (emailProvider === 'resend' && Boolean(value('RESEND_API_KEY')))
+  || (emailProvider === 'auto' && Boolean(value('BREVO_API_KEY') || value('RESEND_API_KEY')))
+);
 const databaseUrl = value('DATABASE_URL');
 let databaseUrlValid = true;
 let databasePassword = value('DB_PASSWORD');
@@ -41,10 +48,14 @@ check(value('DB_SSL') === 'true', 'PostgreSQL con SSL', 'Configura DB_SSL=true p
 check(databasePassword.length >= 16 && databasePassword !== 'cambia-esta-clave', 'Contrasena de base robusta', 'Usa una contrasena unica de al menos 16 caracteres.');
 check(value('JWT_SECRET').length >= 32 && !value('JWT_SECRET').includes('genera-un-secreto'), 'Secreto JWT real', 'Genera un JWT_SECRET aleatorio de al menos 32 caracteres.');
 check(value('MONITORING_TOKEN').length >= 24, 'Token de monitoreo', 'Genera MONITORING_TOKEN con al menos 24 caracteres.');
-check(Boolean(value('PLATFORM_ADMIN_EMAIL')) && value('PLATFORM_ADMIN_PASSWORD').length >= 14,
-  'Propietario de plataforma',
-  'Configura PLATFORM_ADMIN_EMAIL y una contrasena temporal de al menos 14 caracteres.');
-check(Boolean(value('RESEND_API_KEY')) && emailFrom && (stagingMode || !emailFrom.includes('resend.dev')), 'Correo transaccional', 'Configura RESEND_API_KEY y EMAIL_FROM con un dominio verificado.');
+const bootstrapEmail = value('PLATFORM_ADMIN_EMAIL');
+const bootstrapPassword = value('PLATFORM_ADMIN_PASSWORD');
+check(
+  (!bootstrapEmail && !bootstrapPassword) || (Boolean(bootstrapEmail) && bootstrapPassword.length >= 14),
+  'Bootstrap de propietario seguro',
+  'Configura ambas variables PLATFORM_ADMIN_* durante el alta inicial o retira ambas despues de cambiar la contrasena.'
+);
+check(emailProviderValid && emailCredentialsPresent && emailFrom && (stagingMode || !emailFrom.includes('resend.dev')), 'Correo transaccional', 'Configura Brevo o Resend y usa un remitente con dominio propio para la salida comercial.');
 if (!stagingMode) {
   check(value('KUSHKI_ENVIRONMENT') === 'production', 'Kushki en produccion', 'Configura KUSHKI_ENVIRONMENT=production tras la certificacion.');
   check(Boolean(value('KUSHKI_PUBLIC_MERCHANT_ID')) && Boolean(value('KUSHKI_PRIVATE_MERCHANT_ID')) && value('KUSHKI_WEBHOOK_SIGNATURE').length >= 16, 'Credenciales y firma de Kushki', 'Configura los identificadores de comercio y la firma del webhook.');

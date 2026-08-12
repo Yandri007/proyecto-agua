@@ -108,6 +108,12 @@
         .modal-actions { border-top:1px solid var(--line); padding:16px 22px; display:flex; justify-content:flex-end; gap:10px; }
         .modal-actions .primary { width:auto; }
         .notice { padding:12px 14px; border-left:4px solid var(--amber); background:#fff7e9; color:#744900; margin-bottom:18px; line-height:1.5; font-size:13px; }
+        .pilot-confirmation { display:flex; align-items:flex-start; gap:10px; padding:13px 14px; border:1px solid var(--line); border-radius:6px; margin:4px 0 18px; color:#385363; font-size:13px; line-height:1.45; }
+        .pilot-confirmation input { width:18px; height:18px; margin-top:1px; flex:0 0 auto; }
+        .secret-row { display:flex; gap:8px; }
+        .secret-row input { min-width:0; font-family:monospace; font-size:12px; }
+        .secret-row .icon-button { flex:0 0 42px; height:44px; }
+        .pilot-expiry { display:block; margin-top:8px; color:var(--muted); font-size:12px; }
         .toast { position:fixed; right:24px; bottom:24px; z-index:200; max-width:380px; padding:13px 16px; border-radius:6px; color:#fff; background:var(--green); box-shadow:0 10px 30px rgba(0,0,0,.18); }
         .toast.error { background:var(--red); }
         @media(max-width:1000px){ .stats{grid-template-columns:repeat(2,1fr)} .summary-band{grid-template-columns:1fr} }
@@ -139,6 +145,7 @@
             <nav class="nav">
                 <button class="active" data-view="resumen"><i class="fas fa-chart-line"></i><span>Resumen</span></button>
                 <button data-view="empresas"><i class="fas fa-building"></i><span>Empresas</span></button>
+                <button data-view="activaciones"><i class="fas fa-user-check"></i><span>Activaciones</span></button>
                 <button data-view="auditoria"><i class="fas fa-shield-halved"></i><span>Auditoría</span></button>
             </nav>
             <div class="sidebar-foot">
@@ -158,7 +165,7 @@
                         <div class="stat"><div class="stat-top"><span>Pedidos últimos 30 días</span><i class="fas fa-box"></i></div><div id="statOrders" class="stat-value">0</div></div>
                     </div>
                     <div class="summary-band">
-                        <div class="panel"><div class="panel-header"><h3>Cartera de empresas</h3></div><div class="health-list"><div class="health-row"><span>Pruebas activas</span><strong id="trialCompanies">0</strong></div><div class="health-row"><span>Requieren atención</span><strong id="attentionCompanies">0</strong></div><div class="health-row"><span>Total histórico</span><strong id="totalCompanies">0</strong></div></div></div>
+                        <div class="panel"><div class="panel-header"><h3>Cartera de empresas</h3></div><div class="health-list"><div class="health-row"><span>Pruebas activas</span><strong id="trialCompanies">0</strong></div><div class="health-row"><span>Activaciones pendientes</span><strong id="pendingActivations">0</strong></div><div class="health-row"><span>Requieren atención</span><strong id="attentionCompanies">0</strong></div><div class="health-row"><span>Total histórico</span><strong id="totalCompanies">0</strong></div></div></div>
                         <div class="panel"><div class="panel-header"><h3>Ingreso mensual estimado</h3></div><div id="estimatedRevenue" class="amount">$0<small>Calculado con suscripciones activas</small></div></div>
                     </div>
                 </section>
@@ -167,6 +174,13 @@
                     <div class="view-heading"><div><h2>Empresas</h2><p>Administra acceso, prueba, plan y módulos de cada cliente.</p></div></div>
                     <div class="toolbar"><div class="search"><i class="fas fa-search"></i><input id="companySearch" placeholder="Buscar por empresa o código"></div><select id="companyStatus"><option value="">Todos los estados</option><option value="activa">Activas</option><option value="suspendida">Suspendidas</option><option value="archivada">Archivadas</option></select><button id="searchCompanies" class="secondary"><i class="fas fa-filter"></i> Filtrar</button></div>
                     <div class="panel table-wrap"><table><thead><tr><th>Empresa</th><th>Estado</th><th>Plan</th><th>Uso</th><th>Equipo</th><th>Último acceso</th><th></th></tr></thead><tbody id="companiesBody"></tbody></table></div>
+                </section>
+
+                <section id="view-activaciones" class="view">
+                    <div class="view-heading"><div><h2>Activaciones piloto</h2><p>Entrega acceso a cuentas pendientes cuando el correo automático no esté disponible.</p></div><button id="refreshPilotUsers" class="secondary"><i class="fas fa-rotate"></i> Actualizar</button></div>
+                    <div class="notice"><strong>Uso restringido:</strong> confirma primero que el correo pertenece a la persona. El enlace dura 60 minutos, funciona una sola vez y permite que el usuario establezca su propia contraseña.</div>
+                    <div class="toolbar"><div class="search"><i class="fas fa-search"></i><input id="pilotSearch" placeholder="Buscar por persona, correo o empresa"></div><button id="searchPilotUsers" class="secondary"><i class="fas fa-filter"></i> Filtrar</button></div>
+                    <div class="panel table-wrap"><table><thead><tr><th>Usuario</th><th>Empresa</th><th>Rol</th><th>Contacto</th><th>Registrado</th><th></th></tr></thead><tbody id="pilotUsersBody"></tbody></table></div>
                 </section>
 
                 <section id="view-auditoria" class="view">
@@ -205,6 +219,26 @@
         </div>
     </div>
 
+    <div id="pilotAccessModal" class="modal hidden" aria-modal="true" role="dialog">
+        <div class="modal-card" style="max-width:560px">
+            <div class="modal-head"><div><h2>Crear acceso piloto</h2><small id="pilotAccessUser"></small></div><button id="closePilotAccess" class="close" type="button" title="Cerrar"><i class="fas fa-xmark"></i></button></div>
+            <form id="pilotAccessForm">
+                <div class="modal-body">
+                    <div id="pilotAccessSetup">
+                        <div class="field"><label for="pilotChannel">Canal de confirmación</label><select id="pilotChannel" required><option value="whatsapp">WhatsApp</option><option value="telefono">Llamada telefónica</option><option value="presencial">Presencial</option><option value="otro">Otro canal verificado</option></select></div>
+                        <label class="pilot-confirmation"><input id="pilotIdentityConfirmed" type="checkbox" required><span>Confirmo que validé directamente la identidad de esta persona y que entregaré el enlace solo a ella.</span></label>
+                    </div>
+                    <div id="pilotAccessResult" class="hidden">
+                        <div class="notice"><strong>Enlace generado:</strong> compártelo por el canal que acabas de confirmar. Por seguridad no volverá a mostrarse al cerrar.</div>
+                        <div class="field"><label for="pilotAccessUrl">Enlace privado de acceso</label><div class="secret-row"><input id="pilotAccessUrl" type="text" readonly><button id="copyPilotAccess" class="icon-button" type="button" title="Copiar enlace"><i class="fas fa-copy"></i></button></div><small class="pilot-expiry">Vence en 60 minutos y queda anulado después de utilizarse.</small></div>
+                    </div>
+                    <div id="pilotAccessError" class="login-error" role="alert"></div>
+                </div>
+                <div class="modal-actions"><button id="cancelPilotAccess" class="secondary" type="button">Cerrar</button><button id="generatePilotAccess" class="primary" type="submit"><i class="fas fa-link"></i> Generar enlace</button></div>
+            </form>
+        </div>
+    </div>
+
     <div id="passwordModal" class="modal hidden" aria-modal="true" role="dialog">
         <div class="modal-card" style="max-width:500px">
             <div class="modal-head"><h2>Protege tu cuenta</h2></div>
@@ -221,6 +255,8 @@
         const { escapeHtml } = AquaUI;
         let platformAdmin = null;
         let companies = [];
+        let pilotUsers = [];
+        let selectedPilotUser = null;
 
         const byId = (id) => document.getElementById(id);
         const formatDate = (value) => value ? new Intl.DateTimeFormat('es-EC', { dateStyle:'medium', timeStyle:'short' }).format(new Date(value)) : 'Sin actividad';
@@ -302,6 +338,7 @@
                 byId('statUsers').textContent = data.usuarios_activos;
                 byId('statOrders').textContent = data.pedidos_30d;
                 byId('trialCompanies').textContent = data.pruebas_activas;
+                byId('pendingActivations').textContent = data.activaciones_pendientes;
                 byId('attentionCompanies').textContent = data.requieren_atencion;
                 byId('totalCompanies').textContent = data.empresas_total;
                 byId('estimatedRevenue').innerHTML = `$${Number(data.ingreso_mensual_estimado).toFixed(0)}<small>Calculado con suscripciones activas</small>`;
@@ -325,6 +362,75 @@
                     <td><button class="icon-button edit-company" data-id="${company.id}" title="Configurar empresa"><i class="fas fa-sliders"></i></button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">No se encontraron empresas.</td></tr>';
                 document.querySelectorAll('.edit-company').forEach((button) => button.addEventListener('click', () => openCompany(Number(button.dataset.id))));
             } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        async function loadPilotUsers() {
+            const params = new URLSearchParams();
+            if (byId('pilotSearch').value.trim()) params.set('q', byId('pilotSearch').value.trim());
+            try {
+                pilotUsers = await request(`/pilot-users?${params}`);
+                byId('pilotUsersBody').innerHTML = pilotUsers.length ? pilotUsers.map((user) => `
+                    <tr><td><strong>${escapeHtml(user.nombre)}</strong><small>${escapeHtml(user.email)}</small></td>
+                    <td><strong>${escapeHtml(user.empresa)}</strong><small>${escapeHtml(user.empresa_slug)}</small></td>
+                    <td><span class="badge prueba">${escapeHtml(user.rol)}</span></td>
+                    <td><strong>${escapeHtml(user.telefono || 'Sin teléfono')}</strong><small>Cuenta pendiente</small></td>
+                    <td>${escapeHtml(formatDate(user.creado_en))}</td>
+                    <td><button class="secondary create-pilot-access" data-id="${user.id}"><i class="fas fa-link"></i> Crear acceso</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">No hay cuentas pendientes de activación.</td></tr>';
+                document.querySelectorAll('.create-pilot-access').forEach((button) => button.addEventListener('click', () => openPilotAccess(Number(button.dataset.id))));
+            } catch (error) { showToast(error.message, 'error'); }
+        }
+
+        function openPilotAccess(id) {
+            selectedPilotUser = pilotUsers.find((item) => item.id === id);
+            if (!selectedPilotUser) return;
+            byId('pilotAccessUser').textContent = `${selectedPilotUser.nombre} · ${selectedPilotUser.empresa}`;
+            byId('pilotAccessModal').classList.remove('hidden');
+        }
+
+        function closePilotAccessModal() {
+            selectedPilotUser = null;
+            byId('pilotAccessForm').reset();
+            byId('pilotAccessUrl').value = '';
+            byId('pilotAccessError').textContent = '';
+            byId('pilotAccessSetup').classList.remove('hidden');
+            byId('pilotAccessResult').classList.add('hidden');
+            byId('generatePilotAccess').classList.remove('hidden');
+            byId('pilotAccessModal').classList.add('hidden');
+        }
+
+        async function generatePilotAccess(event) {
+            event.preventDefault();
+            if (!selectedPilotUser) return;
+            const button = byId('generatePilotAccess');
+            button.disabled = true;
+            byId('pilotAccessError').textContent = '';
+            try {
+                const result = await request(`/pilot-users/${selectedPilotUser.id}/access-link`, {
+                    method:'POST',
+                    body:JSON.stringify({
+                        identity_confirmed:byId('pilotIdentityConfirmed').checked,
+                        channel:byId('pilotChannel').value
+                    })
+                });
+                byId('pilotAccessUrl').value = result.access_url;
+                byId('pilotAccessSetup').classList.add('hidden');
+                byId('pilotAccessResult').classList.remove('hidden');
+                button.classList.add('hidden');
+                showToast('Enlace privado generado');
+                loadAudit();
+            } catch (error) { byId('pilotAccessError').textContent = error.message; }
+            finally { button.disabled = false; }
+        }
+
+        async function copyPilotAccess() {
+            const input = byId('pilotAccessUrl');
+            try {
+                await navigator.clipboard.writeText(input.value);
+            } catch (error) {
+                input.select();
+                document.execCommand('copy');
+            }
+            showToast('Enlace copiado');
         }
 
         function openCompany(id) {
@@ -379,9 +485,10 @@
         function switchView(name) {
             document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`));
             document.querySelectorAll('.nav button').forEach((button) => button.classList.toggle('active', button.dataset.view === name));
-            byId('viewTitle').textContent = { resumen:'Resumen ejecutivo', empresas:'Gestión de empresas', auditoria:'Auditoría de plataforma' }[name];
+            byId('viewTitle').textContent = { resumen:'Resumen ejecutivo', empresas:'Gestión de empresas', activaciones:'Activaciones piloto', auditoria:'Auditoría de plataforma' }[name];
             if (name === 'resumen') loadSummary();
             if (name === 'empresas') loadCompanies();
+            if (name === 'activaciones') loadPilotUsers();
             if (name === 'auditoria') loadAudit();
         }
 
@@ -393,6 +500,13 @@
         byId('searchCompanies').addEventListener('click', loadCompanies);
         byId('companySearch').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadCompanies(); });
         byId('companyStatus').addEventListener('change', loadCompanies);
+        byId('refreshPilotUsers').addEventListener('click', loadPilotUsers);
+        byId('searchPilotUsers').addEventListener('click', loadPilotUsers);
+        byId('pilotSearch').addEventListener('keydown', (event) => { if (event.key === 'Enter') loadPilotUsers(); });
+        byId('pilotAccessForm').addEventListener('submit', generatePilotAccess);
+        byId('copyPilotAccess').addEventListener('click', copyPilotAccess);
+        byId('closePilotAccess').addEventListener('click', closePilotAccessModal);
+        byId('cancelPilotAccess').addEventListener('click', closePilotAccessModal);
         byId('closeCompanyModal').addEventListener('click', () => byId('companyModal').classList.add('hidden'));
         byId('cancelCompany').addEventListener('click', () => byId('companyModal').classList.add('hidden'));
         document.querySelectorAll('.nav button').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));

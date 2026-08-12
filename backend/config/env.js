@@ -28,6 +28,11 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 if (renderUrl && !allowedOrigins.includes(renderUrl)) allowedOrigins.push(renderUrl);
 
+const emailProvider = (process.env.EMAIL_PROVIDER || 'auto').trim().toLowerCase();
+if (!['auto', 'brevo', 'resend', 'off'].includes(emailProvider)) {
+  throw new Error('EMAIL_PROVIDER debe ser auto, brevo, resend u off');
+}
+
 const platformAdminBootstrapEmail = (process.env.PLATFORM_ADMIN_EMAIL || '').trim().toLowerCase();
 const platformAdminBootstrapPassword = process.env.PLATFORM_ADMIN_PASSWORD || '';
 if (Boolean(platformAdminBootstrapEmail) !== Boolean(platformAdminBootstrapPassword)) {
@@ -73,8 +78,11 @@ module.exports = {
   auditRetentionDays: Number(process.env.AUDIT_RETENTION_DAYS || 365),
   monitoringToken: process.env.MONITORING_TOKEN || '',
   email: {
+    provider: emailProvider,
+    brevoApiKey: process.env.BREVO_API_KEY || '',
     resendApiKey: process.env.RESEND_API_KEY || '',
-    from: process.env.EMAIL_FROM || 'AquaControl <onboarding@resend.dev>'
+    from: process.env.EMAIL_FROM || 'AquaControl <onboarding@resend.dev>',
+    replyTo: process.env.EMAIL_REPLY_TO || ''
   },
   kushki: {
     environment: process.env.KUSHKI_ENVIRONMENT === 'production' ? 'production' : 'uat',

@@ -8,6 +8,7 @@ const env = require('../config/env');
 const { verifyPlatformToken, requireCurrentPlatformPassword } = require('../middleware/platformAuth');
 const logger = require('../utils/logger');
 const { PLANS } = require('../utils/plans');
+const { createUserToken } = require('../utils/accountTokens');
 
 const router = express.Router();
 
@@ -18,6 +19,14 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true
+});
+
+const pilotAccessLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  message: { error: 'Se alcanzó el límite de activaciones. Espera una hora.' },
+  standardHeaders: true,
+  legacyHeaders: false
 });
 
 const cookieOptions = {
@@ -162,6 +171,11 @@ router.get('/summary', async (req, res) => {
                           WHEN estado = 'activa' AND suscripcion_estado = 'activa' AND plan = 'profesional' THEN $2
                           ELSE 0 END), 0)::NUMERIC AS ingreso_mensual_estimado,
         (SELECT COUNT(*)::INT FROM usuarios WHERE estado = 'activo') AS usuarios_activos,
+        (SELECT COUNT(*)::INT
+         FROM usuarios up
+         JOIN empresas ep ON ep.id = up.empresa_id
+         WHERE up.estado = 'activo' AND up.email_verificado_en IS NULL
+           AND ep.estado = 'activa') AS activaciones_pendientes,
         (SELECT COUNT(*)::INT FROM pedidos WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days') AS pedidos_30d
       FROM empresas
     `, [PLANS.basico.price, PLANS.profesional.price]);
@@ -211,6 +225,109 @@ router.get(
     } catch (error) {
       logger.error('platform_companies_failed', { error });
       return res.status(500).json({ error: 'No fue posible cargar las empresas' });
+    }
+  }
+);
+
+router.get(
+  '/pilot-users',
+  query('q').optional().trim().isLength({ max: 100 }).withMessage('Búsqueda demasiado larga'),
+  handleValidation,
+  async (req, res) => {
+    try {
+      const search = req.query.q ? `%${req.query.q}%` : null;
+      const result = await pool.query(
+        `SELECT u.id, u.nombre, u.email, u.telefono, u.rol, u.creado_en,
+                e.id AS empresa_id, e.nombre AS empresa, e.slug AS empresa_slug
+         FROM usuarios u
+         JOIN empresas e ON e.id = u.empresa_id
+         WHERE u.estado = 'activo'
+           AND u.email_verificado_en IS NULL
+           AND e.estado = 'activa'
+           AND ($1::text IS NULL OR u.nombre ILIKE $1 OR u.email ILIKE $1
+                OR e.nombre ILIKE $1 OR e.slug ILIKE $1)
+         ORDER BY u.creado_en ASC
+         LIMIT 100`,
+        [search]
+      );
+      res.set('Cache-Control', 'no-store');
+      return res.json(result.rows);
+    } catch (error) {
+      logger.error('platform_pilot_users_failed', { error });
+      return res.status(500).json({ error: 'No fue posible cargar las activaciones pendientes' });
+    }
+  }
+);
+
+router.post(
+  '/pilot-users/:id/access-link',
+  pilotAccessLimiter,
+  param('id').isInt({ min: 1 }).withMessage('Usuario inválido').toInt(),
+  body('identity_confirmed').equals('true').withMessage('Debes confirmar la identidad del usuario'),
+  body('channel').isIn(['whatsapp', 'telefono', 'presencial', 'otro']).withMessage('Canal de confirmación inválido'),
+  handleValidation,
+  async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `SELECT u.id, u.nombre, u.email, u.rol, u.empresa_id,
+                e.nombre AS empresa, e.estado AS empresa_estado
+         FROM usuarios u
+         JOIN empresas e ON e.id = u.empresa_id
+         WHERE u.id = $1 AND u.estado = 'activo' AND u.email_verificado_en IS NULL
+         FOR UPDATE OF u`,
+        [req.params.id]
+      );
+      const user = result.rows[0];
+      if (!user) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'La cuenta no existe o ya fue activada' });
+      }
+      if (user.empresa_estado !== 'activa') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'La empresa debe estar activa antes de habilitar usuarios' });
+      }
+
+      const token = await createUserToken(client, user.id, 'restablecer_password', 60);
+      await client.query(
+        `INSERT INTO auditoria_plataforma (administrador_id, empresa_id, accion, detalles)
+         VALUES ($1, $2, 'piloto.enlace_acceso_generado', $3::jsonb)`,
+        [
+          req.platformAdmin.id,
+          user.empresa_id,
+          JSON.stringify({
+            usuario_id: user.id,
+            usuario_email: user.email,
+            usuario_rol: user.rol,
+            canal_confirmacion: req.body.channel,
+            expira_en_minutos: 60
+          })
+        ]
+      );
+      await client.query('COMMIT');
+      res.set('Cache-Control', 'no-store');
+      return res.json({
+        access_url: `${env.appUrl}/?reset_token=${encodeURIComponent(token)}`,
+        expires_in_minutes: 60,
+        user: {
+          id: user.id,
+          nombre: user.nombre,
+          email: user.email,
+          rol: user.rol,
+          empresa: user.empresa
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      logger.error('platform_pilot_access_link_failed', {
+        error,
+        userId: req.params.id,
+        adminId: req.platformAdmin.id
+      });
+      return res.status(500).json({ error: 'No fue posible generar el acceso piloto' });
+    } finally {
+      client.release();
     }
   }
 );

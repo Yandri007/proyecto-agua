@@ -126,7 +126,7 @@ correctamente la imagen de producción definida por el `Dockerfile`.
 ## Pendientes para staging público
 
 - Aprobar y fusionar el PR de publicación en `main` con GitHub Actions en verde.
-- Guardar la `DATABASE_URL` completa de Supabase y `RESEND_API_KEY` en Render.
+- Guardar la `DATABASE_URL` completa de Supabase y una clave de Brevo o Resend en Render.
 - Crear el Blueprint de Render y ejecutar `npm run test:deployment` contra su
   URL HTTPS.
 - Probar el correo de verificación y recuperación con la cuenta propietaria de
@@ -141,7 +141,7 @@ distribuir binarios.
 - Contratar dominio propio; Render ya proporcionará hosting y HTTPS, y Supabase
   proporcionará PostgreSQL administrado.
 - Configurar almacenamiento externo y probar una restauración aislada.
-- Verificar dominio y remitente en Resend.
+- Verificar dominio y remitente en Brevo o Resend para la salida comercial.
 - Completar afiliación, UAT y certificación de Kushki Ecuador.
 - Incorporar razón social, RUC, domicilio y contactos legales reales.
 - Obtener revisión jurídica de términos, privacidad y contratos.

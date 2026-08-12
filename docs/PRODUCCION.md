@@ -14,7 +14,7 @@ permanecer en una instancia Node persistente mientras use Socket.IO y GPS.
 - Nombre comercial, logotipo, precios finales, impuestos y política de reembolsos.
 - Cuenta de hosting y región donde se almacenarán los datos.
 - Base PostgreSQL administrada y destino independiente para backups.
-- Cuenta Resend y dominio de envío verificado.
+- Cuenta Brevo o Resend y dominio de envío verificado.
 - Afiliación Kushki Ecuador y credenciales UAT/producción.
 - Responsable que recibirá alertas operativas y de seguridad.
 
@@ -46,8 +46,11 @@ MONITORING_TOKEN=otro-secreto-independiente
 PLATFORM_ADMIN_EMAIL=propietario@dominio.example
 PLATFORM_ADMIN_PASSWORD=contrasena-temporal-de-14-o-mas-caracteres
 
+EMAIL_PROVIDER=auto
+BREVO_API_KEY=xkeysib-...
 RESEND_API_KEY=re_...
 EMAIL_FROM=AquaControl <notificaciones@dominio.example>
+EMAIL_REPLY_TO=Soporte AquaControl <soporte@dominio.example>
 
 KUSHKI_ENVIRONMENT=production
 KUSHKI_PUBLIC_MERCHANT_ID=...
@@ -65,17 +68,20 @@ El proceso se detiene en producción si `APP_URL` no usa HTTPS,
 
 La consola del propietario se publica en `/plataforma/`. La primera cuenta se
 crea desde las variables `PLATFORM_ADMIN_*` y obliga a reemplazar la contraseña
-temporal. Esta cuenta es independiente de los administradores de cada empresa.
+temporal. Después se deben retirar ambas variables del proveedor. La cuenta
+guardada en PostgreSQL permanece activa y es independiente de los
+administradores de cada empresa.
 
 ## 3. Correo
 
-1. Verificar el dominio en Resend.
+1. Elegir Brevo o Resend y verificar el dominio en el proveedor.
 2. Crear una dirección remitente del mismo dominio.
-3. Definir `RESEND_API_KEY` y `EMAIL_FROM`.
+3. Definir `EMAIL_PROVIDER`, la clave correspondiente y `EMAIL_FROM`.
 4. Registrar una empresa de prueba y confirmar que el mensaje llega.
 5. Probar enlace vencido, reenvío y recuperación de contraseña.
 
-Referencia: [envío de correo](https://resend.com/docs/api-reference/emails/send-email)
+Referencias: [envío con Brevo](https://developers.brevo.com/reference/sendtransacemail),
+[envío con Resend](https://resend.com/docs/api-reference/emails/send-email)
 y [dominio remitente verificado](https://resend.com/docs/knowledge-base/how-do-I-create-an-email-address-or-sender-in-resend).
 
 ## 4. Cobros Kushki

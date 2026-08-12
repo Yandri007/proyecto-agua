@@ -36,17 +36,29 @@ Documentacion: https://supabase.com/docs/guides/database/connecting-to-postgres
 
 ## 2. Preparar correo de staging
 
-Crear una API key en Resend. Para una prueba personal se puede usar
-`AquaControl <onboarding@resend.dev>` y enviar solo al correo propietario de la
-cuenta. Para probar con terceros se debe verificar un dominio y configurar
-`EMAIL_FROM` con ese dominio.
+Para pilotos sin dominio se puede crear una cuenta gratuita de Brevo, verificar
+un remitente propio y configurar `BREVO_API_KEY`. Brevo puede reemplazar el
+remitente cuando no existe un dominio autenticado; es una solución temporal.
+Resend se conserva como alternativa para pruebas con el correo propietario.
+
+```env
+EMAIL_PROVIDER=auto
+BREVO_API_KEY=xkeysib-...
+RESEND_API_KEY=re_...
+EMAIL_FROM=AquaControl <correo-verificado@example.com>
+```
+
+Aunque no haya proveedor de correo, el propietario puede entregar accesos de
+una hora desde `/plataforma/ > Activaciones`, después de validar la identidad
+del usuario por un canal independiente.
 
 ## 3. Crear el servicio en Render
 
 1. Subir la rama `main` al repositorio de GitHub.
 2. En Render, seleccionar `New > Blueprint` y conectar el repositorio.
 3. Render detectara `render.yaml` y creara `aquacontrol-saas`.
-4. Introducir `DATABASE_URL` y `RESEND_API_KEY` cuando el Blueprint los pida.
+4. Introducir `DATABASE_URL` y al menos una de `BREVO_API_KEY` o
+   `RESEND_API_KEY` cuando el Blueprint los pida.
 5. Confirmar el plan `free` y desplegar. No seleccionar una instancia de pago.
 
 Render genera `JWT_SECRET` y `MONITORING_TOKEN`. La aplicacion toma
@@ -82,7 +94,7 @@ pedidos.
 
 - Cambiar al plan Supabase Pro para disponer de backups diarios administrados.
 - Verificar restauracion en un proyecto Supabase aislado.
-- Conectar dominio propio y remitente Resend verificado.
+- Conectar dominio propio y remitente autenticado en Brevo o Resend.
 - Completar certificacion Kushki y configurar sus secretos de produccion.
 - Ejecutar `npm run preflight`, `npm run test:deployment` y una prueba piloto en
   telefonos reales.
