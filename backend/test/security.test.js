@@ -13,7 +13,30 @@ const { isTlsDatabaseClient } = require('../config/database');
 const { requireCurrentPlatformPassword } = require('../middleware/platformAuth');
 const env = require('../config/env');
 const { configuredProvider, parseSender, sendEmail } = require('../utils/email');
+const {
+  buildClientPortalUrl,
+  createClientInvite,
+  verifyClientInvite
+} = require('../utils/clientInvites');
 const crypto = require('crypto');
+
+test('el portal de clientes queda ligado a la empresa y se puede renovar', () => {
+  const company = {
+    id: 18,
+    slug: 'agua-prueba',
+    registro_clientes_version: 3
+  };
+  const token = createClientInvite(company);
+
+  assert.equal(verifyClientInvite(token, company), true);
+  assert.equal(verifyClientInvite(token, { ...company, id: 19 }), false);
+  assert.equal(verifyClientInvite(token, { ...company, registro_clientes_version: 4 }), false);
+  assert.equal(verifyClientInvite(`${token}alterado`, company), false);
+
+  const portal = new URL(buildClientPortalUrl(company));
+  assert.equal(portal.searchParams.get('cliente_empresa'), company.slug);
+  assert.equal(verifyClientInvite(portal.searchParams.get('invite'), company), true);
+});
 
 test('el remitente se adapta al formato requerido por Brevo', () => {
   assert.deepEqual(parseSender('AquaControl <avisos@example.com>'), {

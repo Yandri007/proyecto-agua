@@ -16,9 +16,10 @@ empresa y, cuando sea necesario, banderas de funcionalidad.
 La portada `/` es el único punto de acceso:
 
 - El administrador registra la distribuidora e inicia una prueba de 14 días.
-- Administradores, repartidores y clientes verifican su correo antes de entrar.
+- Administradores y repartidores verifican su correo antes de entrar.
 - El administrador crea las cuentas de sus repartidores.
-- El cliente se registra con el código de la distribuidora.
+- Cada administrador comparte un único portal seguro de su distribuidora; desde
+  ese enlace los clientes crean exclusivamente una cuenta con rol `cliente`.
 - El servidor determina el rol y redirige al panel autorizado.
 
 Rutas:
@@ -32,6 +33,8 @@ Rutas:
 - Sesión en cookie `HttpOnly`, invalidación global, permisos por rol y rate limits.
 - Verificación de correo y recuperación de contraseña con tokens de un solo uso.
 - Activación piloto asistida, con confirmación de identidad, enlace temporal y auditoría global.
+- Módulo de clientes para compartir o renovar el portal de alta, buscar cuentas
+  y suspender o reactivar su acceso.
 - Aislamiento multiempresa en HTTP, PostgreSQL y salas WebSocket.
 - Productos, inventario, pedidos, repartidores, entregas y confirmaciones.
 - Historial detallado y de solo lectura para repartidores.
@@ -116,7 +119,7 @@ npm run backup
 secretos. Debe aprobar antes de desplegar en producción.
 
 La integración requiere el servidor y PostgreSQL activos. Crea empresas
-temporales, comprueba aislamiento, identidad, recurrencias, módulos, personal, planta, flota,
+temporales, comprueba aislamiento, portal de clientes, identidad, recurrencias, módulos, personal, planta, flota,
 ventas en ruta, dos pedidos consecutivos a direcciones distintas, stock, GPS,
 comprobantes, cierres, reportes y la CSP con nonce,
 y elimina los datos de prueba al terminar.
@@ -133,8 +136,10 @@ guia de infraestructura esta en
 El correo transaccional admite Brevo y Resend. `EMAIL_PROVIDER=auto` prioriza
 `BREVO_API_KEY` y usa `RESEND_API_KEY` como alternativa. Sin proveedor, los
 enlaces automáticos se devuelven únicamente en desarrollo; para pilotos sin
-dominio, el propietario puede generar enlaces privados desde
-`/plataforma/ > Activaciones` después de verificar la identidad por otro canal.
+dominio, el propietario puede generar enlaces privados para administradores y
+personal desde `/plataforma/ > Activaciones` después de verificar la identidad
+por otro canal. El alta de consumidores se realiza desde el enlace que cada
+administrador obtiene en `/admin/ > Clientes`.
 
 Sin credenciales de Kushki, el panel muestra los planes pero no permite cobrar.
 La tarjeta se captura con Kajita y AquaControl no guarda PAN ni CVV. Consulte la

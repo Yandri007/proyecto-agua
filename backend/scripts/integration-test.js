@@ -234,6 +234,23 @@ const run = async () => {
     result = await request(`/api/productos/${product.id}`, {}, secondary.cookie);
     assert.equal(result.response.status, 404);
 
+    result = await request('/api/auth/client-portal', {}, adminCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.enabled, true);
+    const originalClientInvite = tokenFromUrl(result.data.client_portal_url, 'invite');
+    assert.equal(
+      new URL(result.data.client_portal_url).searchParams.get('cliente_empresa'),
+      primarySlug
+    );
+
+    const clientRegistrationSocket = await connectSocket(adminCookie);
+    const adminReceivedClientRegistration = waitForSocketEvent(
+      clientRegistrationSocket,
+      'operacion_actualizada',
+      (data) => data.recurso === '/api/auth'
+        && data.accion === 'POST'
+        && data.actorRol === 'cliente'
+    );
     const clientEmail = `cliente-${unique}@example.com`;
     result = await request('/api/auth/register', {
       method: 'POST',
@@ -242,15 +259,61 @@ const run = async () => {
         email: clientEmail,
         password,
         telefono: '0988888888',
-        empresa_slug: primarySlug
+        empresa_slug: primarySlug,
+        invite_token: originalClientInvite
       })
     });
     assert.equal(result.response.status, 201);
-    await verifyEmail(result.data.development_url);
+    assert.equal(result.data.can_login, true);
+    assert.equal(result.data.user.rol, 'cliente');
+    assert.equal(result.data.user.acceso_cliente_autorizado, true);
+    clientCookie = result.response.headers.get('set-cookie').split(';')[0];
+    await adminReceivedClientRegistration;
 
-    const clientSession = await login(clientEmail, password);
-    clientCookie = clientSession.cookie;
-    assert.equal(clientSession.user.rol, 'cliente');
+    result = await request('/api/auth/me', {}, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.user.rol, 'cliente');
+
+    result = await request('/api/auth/clientes', {}, clientCookie);
+    assert.equal(result.response.status, 403);
+
+    result = await request('/api/auth/clientes', {}, adminCookie);
+    assert.equal(result.response.status, 200);
+    const managedClient = result.data.find((item) => item.email === clientEmail);
+    assert.ok(managedClient);
+
+    result = await request('/api/auth/client-portal/rotate', { method: 'POST' }, adminCookie);
+    assert.equal(result.response.status, 200);
+    assert.notEqual(tokenFromUrl(result.data.client_portal_url, 'invite'), originalClientInvite);
+
+    result = await request('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        nombre: 'Cliente con enlace anterior',
+        email: `enlace-anterior-${unique}@example.com`,
+        password,
+        empresa_slug: primarySlug,
+        invite_token: originalClientInvite
+      })
+    });
+    assert.equal(result.response.status, 403);
+
+    result = await request(`/api/auth/clientes/${managedClient.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'inactivo' })
+    }, adminCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.estado, 'inactivo');
+
+    result = await request('/api/auth/me', {}, clientCookie);
+    assert.equal(result.response.status, 401);
+
+    result = await request(`/api/auth/clientes/${managedClient.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'activo' })
+    }, adminCookie);
+    assert.equal(result.response.status, 200);
+    clientCookie = (await login(clientEmail, password)).cookie;
 
     result = await request('/api/auth/forgot-password', {
       method: 'POST',
@@ -704,7 +767,7 @@ const run = async () => {
     assert.equal(result.response.status, 200);
     assert.ok(result.data.some((entry) => entry.accion === 'usuario.login'));
 
-    console.log('Integración verificada: identidad, recurrencias, módulos, personal, planta, flota, ventas, GPS, comprobantes, cierres y stock');
+    console.log('Integración verificada: portal de clientes, identidad, recurrencias, módulos, personal, planta, flota, ventas, GPS, comprobantes, cierres y stock');
   } finally {
     for (const socket of liveSockets) socket.disconnect();
     const client = await pool.connect();

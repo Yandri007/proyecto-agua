@@ -11,7 +11,7 @@ puesta en producción con acuerdo de disponibilidad.
 - Alta, soporte y cobro coordinados directamente por el propietario.
 - Sin prometer disponibilidad continua mientras se use Render gratuito.
 
-## Activar una cuenta
+## Activar la empresa y su personal
 
 1. Confirmar con la persona que el correo registrado le pertenece.
 2. Entrar en `https://aquacontrol-saas.onrender.com/plataforma/`.
@@ -24,6 +24,25 @@ puesta en producción con acuerdo de disponibilidad.
 El enlace funciona una sola vez. Generar otro invalida el anterior. AquaControl
 no guarda el enlace en la auditoría; registra quién lo generó, para qué usuario,
 la empresa, el canal de confirmación y la duración.
+
+Este procedimiento es para el administrador y las cuentas internas que
+requieran activación asistida. El propietario de AquaControl no debe repetirlo
+por cada consumidor de la distribuidora.
+
+## Incorporar clientes de la distribuidora
+
+1. El administrador entra a `/admin/` y abre `Clientes`.
+2. Copia el enlace del portal y lo comparte por el canal habitual de su negocio.
+3. El consumidor abre el enlace y crea su cuenta. El servidor fija el rol
+   `cliente`; el formulario no permite solicitar permisos administrativos.
+4. La sesión de cliente se inicia al terminar y queda limitada a su empresa.
+5. El administrador puede suspender o reactivar la cuenta desde el mismo módulo.
+
+El enlace sirve para todos los clientes mientras la empresa esté activa y su
+prueba o suscripción siga vigente. `Clientes` está disponible en cualquier plan
+y no depende de los módulos opcionales. Si el enlace se comparte fuera del
+público esperado, el administrador selecciona `Renovar enlace`; el anterior
+queda invalidado inmediatamente y las cuentas existentes no se borran.
 
 ## Correo gratuito opcional
 

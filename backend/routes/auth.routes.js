@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { body, query, validationResult } = require('express-validator');
+const { body, query, param, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const env = require('../config/env');
 const { verifyToken, checkRole } = require('../middleware/auth');
@@ -13,6 +13,7 @@ const { writeAudit } = require('../utils/audit');
 const { getPlan, requireActiveSubscription } = require('../utils/plans');
 const logger = require('../utils/logger');
 const { getCompanyModules } = require('../utils/modules');
+const { buildClientPortalUrl, verifyClientInvite } = require('../utils/clientInvites');
 
 const router = express.Router();
 
@@ -54,6 +55,7 @@ const publicUser = (user) => ({
   nombre: user.nombre,
   email: user.email,
   email_verificado: Boolean(user.email_verificado_en),
+  acceso_cliente_autorizado: Boolean(user.acceso_cliente_autorizado_en),
   ubicacion_consentida: Boolean(user.ubicacion_consentida_en),
   rol: user.rol,
   empresa: {
@@ -225,6 +227,8 @@ router.post(
     .trim()
     .matches(/^[a-z0-9-]{2,80}$/).withMessage('Código de empresa inválido'),
   body('direccion').optional({ checkFalsy: true }).trim().isLength({ max: 300 }),
+  body('invite_token').optional({ checkFalsy: true }).isString().isLength({ min: 20, max: 1000 })
+    .withMessage('Invitación de clientes inválida'),
   handleValidation,
   async (req, res) => {
     const {
@@ -233,6 +237,7 @@ router.post(
       password,
       telefono,
       direccion,
+      invite_token: inviteToken,
       empresa_slug: empresaSlug
     } = req.body;
     const client = await pool.connect();
@@ -240,7 +245,8 @@ router.post(
     try {
       const companyResult = await client.query(
         `SELECT id, nombre, slug, plan, prueba_hasta,
-                suscripcion_estado, periodo_hasta
+                suscripcion_estado, periodo_hasta, modulos,
+                registro_clientes_version
          FROM empresas
          WHERE slug = $1
            AND estado = 'activa'
@@ -252,22 +258,67 @@ router.post(
       }
 
       const company = companyResult.rows[0];
+      const invitedClient = inviteToken ? verifyClientInvite(inviteToken, company) : false;
+      if (inviteToken && !invitedClient) {
+        return res.status(403).json({ error: 'El enlace de clientes venció o fue reemplazado' });
+      }
       const hashedPassword = await bcrypt.hash(password, 12);
       await client.query('BEGIN');
       transactionStarted = true;
       const result = await client.query(
         `INSERT INTO usuarios
-          (empresa_id, nombre, email, password, telefono, direccion, rol)
-         VALUES ($1, $2, $3, $4, $5, $6, 'cliente')
+          (empresa_id, nombre, email, password, telefono, direccion, rol,
+           acceso_cliente_autorizado_en)
+         VALUES ($1, $2, $3, $4, $5, $6, 'cliente',
+                 CASE WHEN $7::boolean THEN CURRENT_TIMESTAMP ELSE NULL END)
          RETURNING id, nombre, email, rol, empresa_id,
-                   email_verificado_en, sesion_version`,
-        [company.id, nombre, email, hashedPassword, telefono || null, direccion || null]
+                   email_verificado_en, acceso_cliente_autorizado_en, sesion_version`,
+        [
+          company.id,
+          nombre,
+          email,
+          hashedPassword,
+          telefono || null,
+          direccion || null,
+          invitedClient
+        ]
       );
       const user = enrichUserWithCompany(result.rows[0], company);
-      const verificationToken = await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+      const verificationToken = invitedClient
+        ? null
+        : await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+      if (invitedClient) {
+        await writeAudit({
+          client,
+          req,
+          user,
+          empresaId: company.id,
+          action: 'cliente.registrado_portal',
+          entity: 'usuarios',
+          entityId: user.id,
+          details: { canal: 'enlace_empresa' }
+        });
+      }
       await client.query('COMMIT');
       transactionStarted = false;
 
+      if (invitedClient) {
+        const io = req.app?.get?.('io');
+        if (io) {
+          io.to(`empresa:${company.id}`).emit('operacion_actualizada', {
+            recurso: '/api/auth',
+            accion: 'POST',
+            actorRol: 'cliente',
+            actualizadoEn: new Date().toISOString()
+          });
+        }
+        issueSession(res, user);
+        return res.status(201).json({
+          message: 'Cuenta creada. Ya puedes realizar tus pedidos.',
+          can_login: true,
+          user: publicUser(user)
+        });
+      }
       const emailResult = await deliverVerification(user, verificationToken);
       return res.status(201).json({
         message: 'Cuenta creada. Verifica tu correo para ingresar.',
@@ -473,7 +524,8 @@ router.post(
       const { email, password } = req.body;
       const result = await pool.query(
         `SELECT u.id, u.nombre, u.email, u.password, u.rol, u.empresa_id,
-                u.email_verificado_en, u.sesion_version, u.ubicacion_consentida_en,
+                u.email_verificado_en, u.acceso_cliente_autorizado_en,
+                u.sesion_version, u.ubicacion_consentida_en,
                 e.nombre AS empresa_nombre, e.slug AS empresa_slug,
                 e.plan AS empresa_plan, e.prueba_hasta AS empresa_prueba_hasta,
                 e.suscripcion_estado AS empresa_suscripcion_estado,
@@ -489,7 +541,8 @@ router.post(
       if (!user || !validPassword) {
         return res.status(401).json({ error: 'Credenciales inválidas' });
       }
-      if (!user.email_verificado_en) {
+      const clientAccessApproved = user.rol === 'cliente' && user.acceso_cliente_autorizado_en;
+      if (!user.email_verificado_en && !clientAccessApproved) {
         return res.status(403).json({
           error: 'Verifica tu correo antes de iniciar sesión',
           code: 'EMAIL_NOT_VERIFIED'
@@ -554,6 +607,143 @@ router.get('/empresa', verifyToken, checkRole(['admin']), async (req, res) => {
     return res.status(500).json({ error: 'No fue posible cargar los datos de la empresa' });
   }
 });
+
+router.get(
+  '/client-portal',
+  verifyToken,
+  checkRole(['admin']),
+  requireActiveSubscription,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT e.id, e.nombre, e.slug, e.registro_clientes_habilitado,
+                e.registro_clientes_version,
+                COUNT(u.id) FILTER (WHERE u.rol = 'cliente' AND u.estado = 'activo')::INT AS clientes_activos
+         FROM empresas e
+         LEFT JOIN usuarios u ON u.empresa_id = e.id
+         WHERE e.id = $1
+         GROUP BY e.id`,
+        [req.user.empresa_id]
+      );
+      const company = result.rows[0];
+      if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
+      res.set('Cache-Control', 'no-store');
+      return res.json({
+        enabled: company.registro_clientes_habilitado,
+        client_portal_url: company.registro_clientes_habilitado
+          ? buildClientPortalUrl(company)
+          : null,
+        clientes_activos: company.clientes_activos
+      });
+    } catch (error) {
+      logger.error('client_portal_read_failed', { error, companyId: req.user.empresa_id });
+      return res.status(500).json({ error: 'No fue posible cargar el portal de clientes' });
+    }
+  }
+);
+
+router.post(
+  '/client-portal/rotate',
+  verifyToken,
+  checkRole(['admin']),
+  requireActiveSubscription,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `UPDATE empresas
+         SET registro_clientes_version = registro_clientes_version + 1
+         WHERE id = $1 AND estado = 'activa' AND registro_clientes_habilitado = TRUE
+         RETURNING id, nombre, slug, registro_clientes_habilitado,
+                   registro_clientes_version`,
+        [req.user.empresa_id]
+      );
+      const company = result.rows[0];
+      if (!company) {
+        return res.status(409).json({ error: 'El registro de clientes no está habilitado' });
+      }
+      await writeAudit({
+        req,
+        action: 'clientes.enlace_renovado',
+        entity: 'empresas',
+        entityId: company.id,
+        details: { version: company.registro_clientes_version }
+      });
+      res.set('Cache-Control', 'no-store');
+      return res.json({
+        enabled: true,
+        client_portal_url: buildClientPortalUrl(company)
+      });
+    } catch (error) {
+      logger.error('client_portal_rotate_failed', { error, companyId: req.user.empresa_id });
+      return res.status(500).json({ error: 'No fue posible renovar el enlace de clientes' });
+    }
+  }
+);
+
+router.get(
+  '/clientes',
+  verifyToken,
+  checkRole(['admin']),
+  requireActiveSubscription,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT u.id, u.nombre, u.email, u.telefono, u.direccion, u.estado,
+                u.email_verificado_en, u.acceso_cliente_autorizado_en,
+                u.ultimo_acceso_en, u.creado_en,
+                COUNT(p.id)::INT AS pedidos_total,
+                COALESCE(SUM(p.total) FILTER (WHERE p.estado <> 'cancelado'), 0)::NUMERIC AS total_pedidos
+         FROM usuarios u
+         LEFT JOIN pedidos p ON p.cliente_id = u.id AND p.empresa_id = u.empresa_id
+         WHERE u.empresa_id = $1 AND u.rol = 'cliente'
+         GROUP BY u.id
+         ORDER BY u.creado_en DESC`,
+        [req.user.empresa_id]
+      );
+      return res.json(result.rows);
+    } catch (error) {
+      logger.error('clients_read_failed', { error, companyId: req.user.empresa_id });
+      return res.status(500).json({ error: 'No fue posible cargar los clientes' });
+    }
+  }
+);
+
+router.patch(
+  '/clientes/:id/status',
+  verifyToken,
+  checkRole(['admin']),
+  requireActiveSubscription,
+  param('id').isInt({ min: 1 }).withMessage('Cliente inválido').toInt(),
+  body('estado').isIn(['activo', 'inactivo']).withMessage('Estado de cliente inválido'),
+  handleValidation,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `UPDATE usuarios
+         SET estado = $1, sesion_version = sesion_version + 1
+         WHERE id = $2 AND empresa_id = $3 AND rol = 'cliente'
+         RETURNING id, nombre, email, estado`,
+        [req.body.estado, req.params.id, req.user.empresa_id]
+      );
+      if (result.rowCount === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
+      await writeAudit({
+        req,
+        action: `cliente.${req.body.estado === 'activo' ? 'activado' : 'desactivado'}`,
+        entity: 'usuarios',
+        entityId: req.params.id,
+        details: { estado: req.body.estado }
+      });
+      return res.json(result.rows[0]);
+    } catch (error) {
+      logger.error('client_status_update_failed', {
+        error,
+        companyId: req.user.empresa_id,
+        clientId: req.params.id
+      });
+      return res.status(500).json({ error: 'No fue posible actualizar el cliente' });
+    }
+  }
+);
 
 router.get('/repartidores', verifyToken, checkRole(['admin']), async (req, res) => {
   try {

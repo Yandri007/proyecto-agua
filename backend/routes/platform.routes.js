@@ -175,6 +175,7 @@ router.get('/summary', async (req, res) => {
          FROM usuarios up
          JOIN empresas ep ON ep.id = up.empresa_id
          WHERE up.estado = 'activo' AND up.email_verificado_en IS NULL
+           AND up.acceso_cliente_autorizado_en IS NULL
            AND ep.estado = 'activa') AS activaciones_pendientes,
         (SELECT COUNT(*)::INT FROM pedidos WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '30 days') AS pedidos_30d
       FROM empresas
@@ -243,6 +244,7 @@ router.get(
          JOIN empresas e ON e.id = u.empresa_id
          WHERE u.estado = 'activo'
            AND u.email_verificado_en IS NULL
+           AND u.acceso_cliente_autorizado_en IS NULL
            AND e.estado = 'activa'
            AND ($1::text IS NULL OR u.nombre ILIKE $1 OR u.email ILIKE $1
                 OR e.nombre ILIKE $1 OR e.slug ILIKE $1)
@@ -276,6 +278,7 @@ router.post(
          FROM usuarios u
          JOIN empresas e ON e.id = u.empresa_id
          WHERE u.id = $1 AND u.estado = 'activo' AND u.email_verificado_en IS NULL
+           AND u.acceso_cliente_autorizado_en IS NULL
          FOR UPDATE OF u`,
         [req.params.id]
       );

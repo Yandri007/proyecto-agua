@@ -91,6 +91,14 @@
         .btn-approve { background: #dcfce7; color: #166534; }
         .btn-reject { background: #fee2e2; color: #991b1b; }
         .btn-neutral { background: #e0f2fe; color: #075985; }
+        .client-portal { background:#103f50; color:white; border-radius:8px; padding:22px; margin-bottom:22px; display:grid; grid-template-columns:minmax(220px,.7fr) minmax(320px,1.3fr); gap:24px; align-items:center; }
+        .client-portal h3 { margin-bottom:8px; }
+        .client-portal p { color:#c6dbe2; line-height:1.5; font-size:13px; }
+        .client-link-row { display:flex; gap:8px; align-items:center; }
+        .client-link-row input { flex:1; min-width:0; height:42px; border:1px solid #92b5c1; border-radius:6px; padding:9px 11px; background:white; color:#173441; font-size:12px; }
+        .client-link-row button { min-width:42px; height:42px; border:0; border-radius:6px; cursor:pointer; }
+        .client-link-actions { display:flex; gap:8px; margin-top:9px; }
+        .client-link-actions button { border:1px solid rgba(255,255,255,.35); background:transparent; color:white; border-radius:6px; padding:8px 11px; cursor:pointer; }
         @media (max-width: 1000px) { .module-grid { grid-template-columns: 1fr; } .compact-form-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 760px) {
             .sidebar { width: 72px; }
@@ -105,6 +113,7 @@
             .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
             .charts-grid { grid-template-columns: 1fr; gap: 14px; }
             .compact-form-grid { grid-template-columns: 1fr; }
+            .client-portal { grid-template-columns:1fr; }
             .data-table table { min-width: 720px; }
             .stat-number { font-size: 24px; }
         }
@@ -132,6 +141,7 @@
             <div class="sidebar-nav">
                 <a onclick="showTab('dashboard')" id="menu-dashboard" class="active"><i class="fas fa-chart-line"></i><span> Dashboard</span></a>
                 <a onclick="showTab('pedidos')" id="menu-pedidos"><i class="fas fa-shopping-cart"></i><span> Pedidos</span></a>
+                <a onclick="showTab('clientes')" id="menu-clientes"><i class="fas fa-users"></i><span> Clientes</span></a>
                 <a onclick="showTab('recurrentes')" id="menu-recurrentes"><i class="fas fa-calendar-check"></i><span> Programaciones</span></a>
                 <a onclick="showTab('inventario')" id="menu-inventario"><i class="fas fa-boxes"></i><span> Inventario</span></a>
                 <a onclick="showTab('repartidores')" id="menu-repartidores"><i class="fas fa-truck"></i><span> Repartidores</span></a>
@@ -200,6 +210,19 @@
                     <button class="btn-export" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Exportar</button>
                 </div>
                 <div class="data-table"><table><thead><tr><th>ID</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Repartidor</th><th>Fecha</th><th>Acción</th></tr></thead><tbody id="tablaPedidosBody"></tbody></table></div>
+            </div>
+
+            <div id="tab-clientes" class="tab">
+                <section class="client-portal">
+                    <div><h3><i class="fas fa-mobile-screen-button"></i> Portal de clientes</h3><p id="clientPortalStatus">Preparando el acceso de tu distribuidora.</p></div>
+                    <div><div class="client-link-row"><input id="clientPortalUrl" type="text" readonly aria-label="Enlace del portal de clientes"><button id="copyClientPortal" type="button" onclick="copiarPortalClientes()" title="Copiar enlace"><i class="fas fa-copy"></i></button></div><div class="client-link-actions"><button id="rotateClientPortal" type="button" onclick="renovarPortalClientes()"><i class="fas fa-rotate"></i> Renovar enlace</button></div></div>
+                </section>
+                <div class="stats-grid">
+                    <div class="stat-card"><div><div class="stat-number" id="clientesActivosValue">0</div><div class="stat-label">Clientes activos</div></div><i class="fas fa-user-check" style="font-size:34px; opacity:.45;"></i></div>
+                    <div class="stat-card"><div><div class="stat-number" id="clientesPedidosValue">0</div><div class="stat-label">Pedidos registrados</div></div><i class="fas fa-box" style="font-size:34px; opacity:.45;"></i></div>
+                </div>
+                <div class="filters-bar"><div class="filter-group"><label for="buscarCliente">Buscar cliente</label><input id="buscarCliente" type="search" placeholder="Nombre, correo o teléfono" oninput="renderizarClientes()"></div><button class="btn-filter" type="button" onclick="cargarClientes()"><i class="fas fa-rotate"></i> Actualizar</button></div>
+                <div class="data-table"><table><thead><tr><th>Cliente</th><th>Contacto</th><th>Acceso</th><th>Pedidos</th><th>Último acceso</th><th>Control</th></tr></thead><tbody id="tablaClientesBody"></tbody></table></div>
             </div>
 
             <!-- Inventario -->
@@ -368,6 +391,7 @@
         const marcadoresOperativos = new Map();
         let billingConfig = null;
         let adminRefreshTimer = null;
+        let clientes = [];
         let empresaModulos = { ventas_ruta: true, recursos_humanos: false, planta: false, logistica: false };
         const API = '/api';
 
@@ -394,6 +418,8 @@
                 } else if (resource.includes('/organizacion')) {
                     if (activeTab === 'tab-organizacion') cargarOrganizacion();
                     if (activeTab === 'tab-planta') cargarLotes();
+                } else if (resource.includes('/auth') && activeTab === 'tab-clientes') {
+                    cargarClientes();
                 }
                 if (activeTab === 'tab-auditoria') cargarAuditoria();
             }, 250);
@@ -525,6 +551,96 @@
             if (empresaModulos.logistica) await cargarLogistica();
             if (document.getElementById('tab-dashboard').classList.contains('active')) {
                 cargarVentasPorMes();
+            }
+        }
+
+        // ============ CLIENTES ============
+        async function cargarClientes() {
+            try {
+                const [portal, clientRows] = await Promise.all([
+                    requestJson(`${API}/auth/client-portal`),
+                    requestJson(`${API}/auth/clientes`)
+                ]);
+                clientes = clientRows;
+                const portalInput = document.getElementById('clientPortalUrl');
+                portalInput.value = portal.client_portal_url || '';
+                document.getElementById('clientPortalStatus').textContent = portal.enabled
+                    ? 'Comparte este acceso con tus compradores. Cada registro queda limitado a la cuenta de cliente de tu distribuidora.'
+                    : 'El registro de clientes está deshabilitado. Solicita su activación al propietario de la plataforma.';
+                document.getElementById('copyClientPortal').disabled = !portal.enabled;
+                document.getElementById('rotateClientPortal').disabled = !portal.enabled;
+                document.getElementById('clientesActivosValue').textContent = portal.clientes_activos || 0;
+                document.getElementById('clientesPedidosValue').textContent = clientes.reduce((total, client) => total + Number(client.pedidos_total || 0), 0);
+                renderizarClientes();
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            }
+        }
+
+        function renderizarClientes() {
+            const tbody = document.getElementById('tablaClientesBody');
+            if (!tbody) return;
+            const search = (document.getElementById('buscarCliente')?.value || '').trim().toLowerCase();
+            const filtered = clientes.filter((client) => [client.nombre, client.email, client.telefono]
+                .some((value) => String(value || '').toLowerCase().includes(search)));
+            tbody.innerHTML = filtered.length ? filtered.map((client) => {
+                const accessLabel = client.email_verificado_en
+                    ? 'Correo verificado'
+                    : client.acceso_cliente_autorizado_en
+                        ? 'Portal autorizado'
+                        : 'Pendiente';
+                const accessClass = client.estado === 'activo' && accessLabel !== 'Pendiente'
+                    ? 'badge-entregado'
+                    : 'badge-pendiente';
+                const nextState = client.estado === 'activo' ? 'inactivo' : 'activo';
+                const actionLabel = nextState === 'activo' ? 'Activar' : 'Suspender';
+                return `<tr>
+                    <td><strong>${escapeHtml(client.nombre)}</strong><div class="table-detail">${escapeHtml(client.direccion || 'Sin dirección guardada')}</div></td>
+                    <td>${escapeHtml(client.email)}<div class="table-detail">${escapeHtml(client.telefono || 'Sin teléfono')}</div></td>
+                    <td><span class="badge ${accessClass}">${escapeHtml(client.estado === 'activo' ? accessLabel : 'Suspendido')}</span></td>
+                    <td><strong>${Number(client.pedidos_total || 0)}</strong><div class="table-detail">$${Number(client.total_pedidos || 0).toFixed(2)}</div></td>
+                    <td>${client.ultimo_acceso_en ? new Date(client.ultimo_acceso_en).toLocaleString('es-EC') : 'Sin acceso'}</td>
+                    <td><button class="btn-small ${nextState === 'activo' ? 'btn-approve' : 'btn-reject'}" onclick="cambiarEstadoCliente(${client.id}, '${nextState}')"><i class="fas ${nextState === 'activo' ? 'fa-user-check' : 'fa-user-slash'}"></i> ${actionLabel}</button></td>
+                </tr>`;
+            }).join('') : '<tr><td colspan="6" style="text-align:center; padding:30px;">No se encontraron clientes.</td></tr>';
+        }
+
+        async function copiarPortalClientes() {
+            const input = document.getElementById('clientPortalUrl');
+            if (!input.value) return;
+            try {
+                await navigator.clipboard.writeText(input.value);
+            } catch (error) {
+                input.select();
+                document.execCommand('copy');
+            }
+            mostrarToast('Enlace de clientes copiado');
+        }
+
+        async function renovarPortalClientes() {
+            if (!confirm('El enlace anterior dejará de aceptar nuevos registros. ¿Continuar?')) return;
+            try {
+                const portal = await requestJson(`${API}/auth/client-portal/rotate`, { method:'POST' });
+                document.getElementById('clientPortalUrl').value = portal.client_portal_url;
+                mostrarToast('Enlace de clientes renovado');
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            }
+        }
+
+        async function cambiarEstadoCliente(id, estado) {
+            const action = estado === 'activo' ? 'activar' : 'suspender';
+            if (!confirm(`¿Deseas ${action} esta cuenta de cliente?`)) return;
+            try {
+                await requestJson(`${API}/auth/clientes/${id}/status`, {
+                    method:'PATCH',
+                    headers:{ 'Content-Type':'application/json' },
+                    body:JSON.stringify({ estado })
+                });
+                await cargarClientes();
+                mostrarToast(`Cliente ${estado === 'activo' ? 'activado' : 'suspendido'}`);
+            } catch (error) {
+                mostrarToast(error.message, 'error');
             }
         }
 
@@ -1547,6 +1663,7 @@
             if (menuElement) menuElement.classList.add('active');
             if (tab === 'inventario') cargarInventario(); 
             if (tab === 'pedidos') aplicarFiltros(); 
+            if (tab === 'clientes') cargarClientes();
             if (tab === 'recurrentes') cargarRecurrentesAdmin();
             if (tab === 'auditoria') cargarAuditoria();
             if (tab === 'suscripcion') cargarSuscripcion();

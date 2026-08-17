@@ -15,7 +15,8 @@ Las dos sesiones, credenciales y auditorias son independientes.
 
 - Empresas activas, suspendidas y archivadas.
 - Pruebas, planes Basico y Profesional, periodos y estado de suscripcion.
-- Registro de nuevos clientes mediante el codigo de cada distribuidora.
+- Habilitacion global del registro de clientes por empresa. El administrador
+  de cada distribuidora comparte y puede renovar su propio enlace seguro.
 - Modulos opcionales de ventas en ruta, Recursos Humanos, planta y logistica.
 - Uso mensual, cantidad de usuarios, repartidores y ultima actividad.
 - Ingreso mensual estimado y acciones realizadas desde la consola.
@@ -29,11 +30,16 @@ cliente debe reproducir el problema o autorizar un procedimiento documentado.
 2. La cuenta recibe 14 dias de prueba y productos iniciales.
 3. El propietario revisa la nueva empresa en la consola y habilita solo los
    modulos contratados.
-4. Durante la prueba se realiza una sesion de configuracion y una prueba de
+4. El administrador abre `Clientes` y comparte el portal unico de su empresa.
+   Los consumidores se registran directamente con rol `cliente`.
+5. Durante la prueba se realiza una sesion de configuracion y una prueba de
    pedido, asignacion, ruta y entrega.
-5. Al contratar, se cambia a Basico o Profesional y la suscripcion a activa.
-6. Si todavia no existe una pasarela de pago, el cobro puede conciliarse fuera
+6. Al contratar, se cambia a Basico o Profesional y la suscripcion a activa.
+7. Si todavia no existe una pasarela de pago, el cobro puede conciliarse fuera
    de AquaControl y activarse manualmente desde la consola, dejando auditoria.
+
+El rol `cliente` forma parte de todos los planes vigentes. No se habilita como
+un modulo opcional ni requiere que el propietario entregue enlaces individuales.
 
 ## Estados operativos
 

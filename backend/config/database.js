@@ -55,6 +55,7 @@ const initializeDatabase = async () => {
         proveedor_pago VARCHAR(30),
         suscripcion_externa_id VARCHAR(160),
         registro_clientes_habilitado BOOLEAN NOT NULL DEFAULT TRUE,
+        registro_clientes_version INT NOT NULL DEFAULT 1 CHECK (registro_clientes_version >= 1),
         modulos JSONB NOT NULL DEFAULT '{"ventas_ruta": true, "recursos_humanos": false, "planta": false, "logistica": false}'::jsonb,
         creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
@@ -66,6 +67,7 @@ const initializeDatabase = async () => {
     await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS proveedor_pago VARCHAR(30)');
     await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS suscripcion_externa_id VARCHAR(160)');
     await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS registro_clientes_habilitado BOOLEAN NOT NULL DEFAULT TRUE');
+    await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS registro_clientes_version INT NOT NULL DEFAULT 1');
     await client.query(`ALTER TABLE empresas ADD COLUMN IF NOT EXISTS modulos JSONB NOT NULL
       DEFAULT '{"ventas_ruta": true, "recursos_humanos": false, "planta": false, "logistica": false}'::jsonb`);
     await client.query(`UPDATE empresas
@@ -128,6 +130,7 @@ const initializeDatabase = async () => {
         rol VARCHAR(20) NOT NULL DEFAULT 'cliente',
         estado VARCHAR(20) NOT NULL DEFAULT 'activo',
         email_verificado_en TIMESTAMPTZ,
+        acceso_cliente_autorizado_en TIMESTAMPTZ,
         sesion_version INT NOT NULL DEFAULT 1,
         ultimo_acceso_en TIMESTAMPTZ,
         ubicacion_consentida_en TIMESTAMPTZ,
@@ -137,6 +140,7 @@ const initializeDatabase = async () => {
     await client.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS empresa_id INT');
     await client.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS estado VARCHAR(20) NOT NULL DEFAULT 'activo'");
     await client.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email_verificado_en TIMESTAMPTZ');
+    await client.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acceso_cliente_autorizado_en TIMESTAMPTZ');
     await client.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS sesion_version INT NOT NULL DEFAULT 1');
     await client.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultimo_acceso_en TIMESTAMPTZ');
     await client.query('ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ubicacion_consentida_en TIMESTAMPTZ');

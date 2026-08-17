@@ -29,7 +29,8 @@ const getRequestToken = (req) => {
 const getActiveUser = async (userId, sessionVersion = null) => {
   const result = await pool.query(
     `SELECT u.id, u.nombre, u.email, u.rol, u.empresa_id,
-            u.email_verificado_en, u.sesion_version, u.ubicacion_consentida_en,
+            u.email_verificado_en, u.acceso_cliente_autorizado_en,
+            u.sesion_version, u.ubicacion_consentida_en,
             e.nombre AS empresa_nombre, e.slug AS empresa_slug,
             e.plan AS empresa_plan, e.prueba_hasta AS empresa_prueba_hasta,
             e.suscripcion_estado AS empresa_suscripcion_estado,
