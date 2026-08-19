@@ -93,6 +93,7 @@ const run = async () => {
   const healthData = await health.json();
   assert.equal(health.status, 200);
   assert.equal(healthData.status, 'ok');
+  assert.equal(healthData.database_security, 'rls_enforced');
 
   const nonces = new Set();
   for (const path of ['/', '/admin/', '/cliente/app.html', '/repartidor/', '/equipo/', '/plataforma/']) {

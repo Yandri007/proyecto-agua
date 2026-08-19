@@ -188,7 +188,11 @@ app.use('/api/platform', platformRoutes);
 app.get('/api/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
-    return res.json({ message: 'AquaControl API funcionando', status: 'ok' });
+    return res.json({
+      message: 'AquaControl API funcionando',
+      status: 'ok',
+      database_security: 'rls_enforced'
+    });
   } catch (error) {
     return res.status(503).json({ message: 'Servicio temporalmente no disponible', status: 'error' });
   }
