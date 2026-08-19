@@ -5,6 +5,8 @@ const { requireActiveSubscription } = require('../utils/plans');
 const { requireModule } = require('../utils/modules');
 const { writeAudit } = require('../utils/audit');
 const logger = require('../utils/logger');
+const { createNotification, emitNotifications } = require('../utils/notifications');
+const { syncRouteStopForOrder } = require('../utils/deliveryRoutes');
 
 const router = express.Router();
 const VEHICLE_STATES = new Set(['activo', 'mantenimiento', 'inactivo']);
@@ -137,6 +139,8 @@ router.post('/vehiculos/:id/movimientos', checkRole(['admin']), requireModule('l
   }
 
   const client = await pool.connect();
+  let notification = null;
+  let affectedRouteIds = [];
   try {
     await client.query('BEGIN');
     const vehicle = await client.query(
@@ -345,9 +349,29 @@ router.post('/comprobantes/:pedidoId', checkRole(['repartidor']), requireModule(
        WHERE id = $2 AND empresa_id = $3`,
       [Number(totalDeposit.toFixed(2)), orderId, req.user.empresa_id]
     );
+    affectedRouteIds = await syncRouteStopForOrder({
+      client,
+      empresaId: req.user.empresa_id,
+      orderId,
+      orderState: 'entregado'
+    });
+    notification = await createNotification({
+      client,
+      empresaId: req.user.empresa_id,
+      userId: order.cliente_id,
+      type: 'pedido_entregado',
+      title: 'Pedido entregado',
+      message: `El pedido #${orderId} fue entregado y tiene un comprobante disponible.`,
+      orderId,
+      eventKey: `order-delivered-${orderId}`
+    });
     await writeAudit({ client, req, action: 'pedido.entrega_comprobada', entity: 'pedidos', entityId: orderId, details: { receptor: receiver, deposito_envases: totalDeposit } });
     await client.query('COMMIT');
 
+    emitNotifications(req.app.get('io'), [notification]);
+    for (const routeId of affectedRouteIds) {
+      req.app.get('io')?.to(`empresa:${req.user.empresa_id}`).emit('ruta_actualizada', { rutaId: routeId });
+    }
     req.app.get('io')?.to(`empresa:${req.user.empresa_id}:admins`).emit('pedido_actualizado', { pedidoId: orderId, estado: 'entregado' });
     req.app.get('io')?.to(`user:${order.cliente_id}`).emit('pedido_actualizado', { pedidoId: orderId, estado: 'entregado' });
     req.app.get('io')?.to(`user:${order.cliente_id}`).emit('confirmacion_entrega', { pedidoId: orderId });

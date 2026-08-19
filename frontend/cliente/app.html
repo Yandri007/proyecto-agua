@@ -92,6 +92,14 @@
         .location-status { color:#667085; font-size:12px; }
         .address-default { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; }
         .address-default input { width:18px; height:18px; accent-color:#087ca7; }
+        .notification-button { position:relative; width:40px; height:40px; border:1px solid #b7c7d6; border-radius:6px; background:white; color:#0b5068; cursor:pointer; }
+        .notification-badge { position:absolute; top:-6px; right:-6px; min-width:19px; height:19px; border-radius:10px; padding:0 5px; background:#d92d20; color:white; display:grid; place-items:center; font-size:10px; font-weight:700; }
+        .notification-list { display:flex; flex-direction:column; margin:12px 0; text-align:left; }
+        .notification-item { border:0; border-top:1px solid #e5e7eb; background:white; padding:13px 6px; text-align:left; cursor:pointer; width:100%; }
+        .notification-item.unread { background:#eef9fc; border-left:3px solid #087ca7; padding-left:10px; }
+        .notification-item strong { display:block; color:#173441; margin-bottom:4px; }
+        .notification-item span, .notification-item small { display:block; color:#667085; line-height:1.45; }
+        .notification-item small { margin-top:5px; font-size:11px; }
         @media (max-width:760px) { .main-grid { grid-template-columns:1fr; } .programacion-item { grid-template-columns:1fr; } .programacion-actions { justify-content:flex-start; } }
     </style>
     <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
@@ -102,6 +110,7 @@
             <div class="logo"><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> Aqua<span>Control</span></div>
             <div style="display: flex; gap: 15px;">
                 <button class="btn-volver" onclick="window.location.href='/'"><i class="fas fa-arrow-left"></i> Inicio</button>
+                <button class="notification-button" type="button" onclick="abrirNotificaciones()" title="Notificaciones" aria-label="Abrir notificaciones"><i class="fas fa-bell"></i><span id="notificacionesBadge" class="notification-badge" style="display:none;">0</span></button>
                 <div class="user-info"><span id="clienteLiveStatus" class="aq-live-status">En línea</span> <i class="fas fa-user"></i> <span id="userName"></span></div>
             </div>
         </div>
@@ -179,6 +188,12 @@
         <button class="modal-btn-cancel" onclick="document.getElementById('modalComprobante').style.display='none'">Cerrar</button>
     </div></div>
 
+    <div id="modalNotificaciones" class="modal"><div class="modal-content" style="max-width:520px; text-align:left; max-height:88vh; overflow:auto;">
+        <div class="address-heading"><h3><i class="fas fa-bell"></i> Notificaciones</h3><button type="button" onclick="marcarTodasLeidas()"><i class="fas fa-check-double"></i> Marcar leídas</button></div>
+        <div id="notificacionesLista" class="notification-list"></div>
+        <button class="modal-btn-cancel" type="button" onclick="cerrarNotificaciones()" style="width:100%;">Cerrar</button>
+    </div></div>
+
     <div id="modalDirecciones" class="modal"><div class="modal-content" style="max-width:560px; text-align:left; max-height:92vh; overflow:auto;">
         <div class="address-heading"><h3><i class="fas fa-map-location-dot"></i> Mis direcciones</h3><button type="button" onclick="nuevaDireccion()"><i class="fas fa-plus"></i> Nueva</button></div>
         <div id="direccionesGuardadasLista" class="saved-address-list"></div>
@@ -209,7 +224,7 @@
 
     <script nonce="{{CSP_NONCE}}">
         const API = '/api';
-        let token = null, userId = null, carrito = [], catalogoProductos = [], programaciones = [], programacionItems = [], direcciones = [], socket = null, map = null, markerRepartidor = null, pedidoActivo = null;
+        let token = null, userId = null, carrito = [], catalogoProductos = [], programaciones = [], programacionItems = [], direcciones = [], notificaciones = [], socket = null, map = null, markerRepartidor = null, pedidoActivo = null;
         let clienteRefreshTimer = null, clienteRefreshInterval = null;
         let pedidoAOcultar = null;
         const productImageByType = Object.freeze({
@@ -251,7 +266,7 @@
             }
             conectarWebSocket();
             await cargarProductos();
-            await Promise.all([cargarDirecciones(), cargarMisPedidos(), cargarProgramaciones()]);
+            await Promise.all([cargarDirecciones(), cargarMisPedidos(), cargarProgramaciones(), cargarNotificaciones()]);
             if (!clienteRefreshInterval) {
                 clienteRefreshInterval = setInterval(refrescarCliente, 30000);
             }
@@ -261,7 +276,7 @@
             if (!token || document.hidden) return;
             clearTimeout(clienteRefreshTimer);
             clienteRefreshTimer = setTimeout(() => {
-                Promise.all([cargarProductos(), cargarMisPedidos(), cargarProgramaciones(), cargarDirecciones(true)]);
+                Promise.all([cargarProductos(), cargarMisPedidos(), cargarProgramaciones(), cargarDirecciones(true), cargarNotificaciones()]);
             }, 250);
         }
 
@@ -303,8 +318,13 @@
                 cargarMisPedidos();
             });
 
+            socket.on('notificacion', (notification) => {
+                mostrarToast(notification.titulo || 'Nueva notificación', 'info');
+                cargarNotificaciones();
+            });
+
             socket.on('operacion_actualizada', (data) => {
-                if (['/api/pedidos', '/api/productos', '/api/recurrentes', '/api/direcciones'].includes(data.recurso)) {
+                if (['/api/pedidos', '/api/productos', '/api/recurrentes', '/api/direcciones', '/api/rutas', '/api/notificaciones'].includes(data.recurso)) {
                     refrescarCliente();
                 }
             });
@@ -339,6 +359,73 @@
             } 
             map.setView([lat, lng], 14); 
             setTimeout(() => map.invalidateSize(), 0);
+        }
+
+        async function cargarNotificaciones() {
+            try {
+                const data = await AquaUI.requestJson(`${API}/notificaciones`);
+                notificaciones = data.notificaciones || [];
+                const badge = document.getElementById('notificacionesBadge');
+                const unread = Number(data.no_leidas || 0);
+                badge.textContent = unread > 99 ? '99+' : String(unread);
+                badge.style.display = unread ? 'grid' : 'none';
+                renderNotificaciones();
+            } catch (error) {
+                console.error('No fue posible cargar notificaciones:', error);
+            }
+        }
+
+        function renderNotificaciones() {
+            const container = document.getElementById('notificacionesLista');
+            if (!container) return;
+            container.innerHTML = notificaciones.length ? notificaciones.map(item => `
+                <button class="notification-item ${item.leida ? '' : 'unread'}" type="button" onclick="leerNotificacion(${item.id}, ${item.pedido_id || 'null'})">
+                    <strong>${escapeHtml(item.titulo)}</strong>
+                    <span>${escapeHtml(item.mensaje)}</span>
+                    <small>${new Date(item.creada_en).toLocaleString('es-EC')}</small>
+                </button>`).join('') : '<p class="text-muted" style="padding:18px 4px;">No tienes notificaciones.</p>';
+        }
+
+        async function abrirNotificaciones() {
+            await cargarNotificaciones();
+            document.getElementById('modalNotificaciones').style.display = 'flex';
+        }
+
+        function cerrarNotificaciones() {
+            document.getElementById('modalNotificaciones').style.display = 'none';
+        }
+
+        async function leerNotificacion(id, orderId) {
+            const notification = notificaciones.find(item => Number(item.id) === Number(id));
+            if (notification && !notification.leida) {
+                try {
+                    await AquaUI.requestJson(`${API}/notificaciones/${id}/leida`, { method: 'PATCH' });
+                    notification.leida = true;
+                    renderNotificaciones();
+                    const unread = notificaciones.filter(item => !item.leida).length;
+                    const badge = document.getElementById('notificacionesBadge');
+                    badge.textContent = String(unread);
+                    badge.style.display = unread ? 'grid' : 'none';
+                } catch (error) {
+                    mostrarToast(error.message || 'No fue posible actualizar la notificación', 'error');
+                    return;
+                }
+            }
+            if (orderId) {
+                cerrarNotificaciones();
+                document.getElementById('pedidos').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        async function marcarTodasLeidas() {
+            try {
+                await AquaUI.requestJson(`${API}/notificaciones/leer-todas`, { method: 'POST' });
+                notificaciones.forEach(item => { item.leida = true; });
+                renderNotificaciones();
+                document.getElementById('notificacionesBadge').style.display = 'none';
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible actualizar las notificaciones', 'error');
+            }
         }
 
         async function cargarDirecciones(preservarSeleccion = false) {
@@ -851,7 +938,7 @@
                             ${p.indicaciones_entrega ? `<div class="text-muted">${escapeHtml(p.indicaciones_entrega)}</div>` : ''}
                             ${Number(p.deposito_envases || 0) > 0 ? `<div class="text-muted">Incluye depósito de envases: $${Number(p.deposito_envases).toFixed(2)}</div>` : ''}
                             <div>Fecha: ${new Date(p.created_at).toLocaleString()}</div>
-                            ${p.pedido_recurrente_id ? `<div class="text-muted"><i class="fas fa-rotate"></i> Entrega programada para ${new Date(`${String(p.fecha_programada).slice(0,10)}T12:00:00`).toLocaleDateString()}</div>` : ''}
+                            ${p.fecha_programada ? `<div class="text-muted"><i class="fas ${p.pedido_recurrente_id ? 'fa-rotate' : 'fa-calendar-day'}"></i> Entrega programada para ${new Date(`${String(p.fecha_programada).slice(0,10)}T12:00:00`).toLocaleDateString()}</div>` : ''}
                             <div class="acciones-pedido">
                                 ${p.estado === 'pendiente' ? `<button class="btn-cancelar" onclick="cancelarPedido(${p.id})"><i class="fas fa-xmark"></i> Cancelar</button>` : ''}
                                 ${p.estado === 'entregado' && !p.confirmado ? `<button class="btn-confirmar" onclick="confirmarRecepcion(${p.id})"><i class="fas fa-check"></i> Confirmar</button>` : ''}

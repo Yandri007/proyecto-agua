@@ -39,6 +39,10 @@ Rutas:
 - Productos, inventario, pedidos, repartidores, entregas y confirmaciones.
 - Libreta de hasta diez direcciones por cliente, lugar predeterminado,
   indicaciones de entrega y ubicación opcional capturada con consentimiento.
+- Planificación de rutas diarias con secuencia editable, una parada activa,
+  progreso automático e incidencias reprogramables.
+- Centro de notificaciones persistentes para asignación, inicio de ruta,
+  repartidor en camino, incidencias y entrega.
 - Historial detallado y de solo lectura para repartidores.
 - Ventas en ruta con control de duplicados, inventario y conciliación administrativa.
 - Módulos opcionales de RR. HH., planta y logística configurables por empresa.
@@ -122,7 +126,7 @@ npm run backup
 secretos. Debe aprobar antes de desplegar en producción.
 
 La integración requiere el servidor y PostgreSQL activos. Crea empresas
-temporales, comprueba aislamiento, portal de clientes, identidad, direcciones guardadas, recurrencias, módulos, personal, planta, flota,
+temporales, comprueba aislamiento, portal de clientes, identidad, direcciones guardadas, rutas, incidencias, notificaciones, recurrencias, módulos, personal, planta, flota,
 ventas en ruta, pedidos a direcciones distintas, stock, GPS,
 comprobantes, cierres, reportes y la CSP con nonce,
 y elimina los datos de prueba al terminar.

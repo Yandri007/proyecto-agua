@@ -275,6 +275,70 @@ const initializeDatabase = async () => {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS rutas_entrega (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id INT NOT NULL REFERENCES empresas(id),
+        fecha DATE NOT NULL,
+        nombre VARCHAR(100) NOT NULL,
+        repartidor_id INT NOT NULL REFERENCES usuarios(id),
+        estado VARCHAR(20) NOT NULL DEFAULT 'planificada'
+          CHECK (estado IN ('planificada', 'en_curso', 'completada', 'cancelada')),
+        creada_por INT NOT NULL REFERENCES usuarios(id),
+        iniciada_en TIMESTAMPTZ,
+        completada_en TIMESTAMPTZ,
+        creada_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        actualizada_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query('DROP INDEX IF EXISTS rutas_repartidor_fecha_activa_uniq');
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS rutas_repartidor_fecha_pendiente_uniq
+      ON rutas_entrega (empresa_id, fecha, repartidor_id)
+      WHERE estado IN ('planificada', 'en_curso')`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS paradas_ruta (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id INT NOT NULL REFERENCES empresas(id),
+        ruta_id BIGINT NOT NULL REFERENCES rutas_entrega(id) ON DELETE CASCADE,
+        pedido_id INT NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+        orden INT NOT NULL CHECK (orden > 0),
+        estado VARCHAR(20) NOT NULL DEFAULT 'pendiente'
+          CHECK (estado IN ('pendiente', 'en_camino', 'entregada', 'incidencia', 'cancelada')),
+        incidencia_codigo VARCHAR(40),
+        incidencia_detalle VARCHAR(300),
+        iniciada_en TIMESTAMPTZ,
+        completada_en TIMESTAMPTZ,
+        incidencia_en TIMESTAMPTZ,
+        creada_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        actualizada_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (ruta_id, orden),
+        UNIQUE (ruta_id, pedido_id)
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS paradas_pedido_activo_uniq
+      ON paradas_ruta (pedido_id)
+      WHERE estado IN ('pendiente', 'en_camino')`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notificaciones (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id INT NOT NULL REFERENCES empresas(id),
+        usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        tipo VARCHAR(40) NOT NULL,
+        titulo VARCHAR(120) NOT NULL,
+        mensaje VARCHAR(300) NOT NULL,
+        pedido_id INT REFERENCES pedidos(id) ON DELETE CASCADE,
+        ruta_id BIGINT REFERENCES rutas_entrega(id) ON DELETE CASCADE,
+        clave_evento VARCHAR(120),
+        leida BOOLEAN NOT NULL DEFAULT FALSE,
+        creada_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS notificaciones_evento_uniq
+      ON notificaciones (empresa_id, usuario_id, clave_evento)
+      WHERE clave_evento IS NOT NULL`);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS pedidos_recurrentes (
         id BIGSERIAL PRIMARY KEY,
         empresa_id INT NOT NULL REFERENCES empresas(id),
@@ -580,6 +644,9 @@ const initializeDatabase = async () => {
     await client.query('CREATE INDEX IF NOT EXISTS pedidos_empresa_estado_idx ON pedidos (empresa_id, estado, created_at DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS pedidos_cliente_idx ON pedidos (cliente_id, created_at DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS pedidos_repartidor_idx ON pedidos (repartidor_id, estado)');
+    await client.query('CREATE INDEX IF NOT EXISTS rutas_empresa_fecha_idx ON rutas_entrega (empresa_id, fecha DESC, estado)');
+    await client.query('CREATE INDEX IF NOT EXISTS paradas_ruta_orden_idx ON paradas_ruta (ruta_id, orden)');
+    await client.query('CREATE INDEX IF NOT EXISTS notificaciones_usuario_idx ON notificaciones (empresa_id, usuario_id, leida, creada_en DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS pedidos_recurrentes_empresa_fecha_idx ON pedidos_recurrentes (empresa_id, estado, proxima_entrega)');
     await client.query('CREATE INDEX IF NOT EXISTS pedidos_recurrentes_cliente_idx ON pedidos_recurrentes (cliente_id, estado)');
     await client.query('CREATE INDEX IF NOT EXISTS ejecuciones_recurrentes_fecha_idx ON ejecuciones_pedidos_recurrentes (fecha_programada DESC)');

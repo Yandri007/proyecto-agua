@@ -24,6 +24,10 @@ funcionalidad.
 - Gestión de productos, inventario, pedidos, clientes y repartidores.
 - Libreta privada de direcciones por cliente, ubicación principal,
   instrucciones para el repartidor y reutilización segura al repetir pedidos.
+- Planificador de rutas por fecha y repartidor, orden de paradas, inicio de
+  jornada, selección de una parada activa y progreso automático.
+- Incidencias tipificadas, detalle, reprogramación y liberación segura del pedido.
+- Notificaciones persistentes y WebSocket para asignación, salida, incidencia y entrega.
 - Aislamiento multiempresa en API, PostgreSQL y WebSocket.
 - Dashboard, reportes y exportación.
 - Mapa operativo y GPS en tiempo real.
@@ -104,7 +108,7 @@ El comando rechaza su ejecución en producción.
 
 - `npm test`: 22 pruebas aprobadas.
 - `npm run check`: 8 interfaces y 6 scripts verificados.
-- `npm run test:integration`: identidad, direcciones guardadas, recurrencias, módulos, personal, planta,
+- `npm run test:integration`: identidad, direcciones, rutas, incidencias, notificaciones, recurrencias, módulos, personal, planta,
   flota, ventas, GPS, comprobantes, cierres, stock y sincronización de los cinco
   roles aprobados; incluye dos pedidos consecutivos a direcciones distintas,
   reporte semanal y verificación del nonce CSP.

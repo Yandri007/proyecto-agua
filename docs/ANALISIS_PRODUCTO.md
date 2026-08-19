@@ -67,13 +67,16 @@ Fortalezas actuales:
 - Pedidos permanentes semanales, quincenales o mensuales con pausa, omisión y reanudación.
 - Varias direcciones por cliente, lugar principal, instrucciones de acceso y
   coordenadas opcionales reutilizables sin solicitar GPS en cada compra.
+- Rutas diarias por repartidor, orden manual de paradas, progreso operativo,
+  bloqueo de paradas simultáneas e incidencias con reprogramación.
+- Avisos persistentes y en tiempo real desde la asignación hasta la entrega.
 
 Brechas prioritarias:
 
 | Prioridad | Capacidad | Razón |
 | --- | --- | --- |
-| Alta | Rutas, paradas y secuenciación | Reduce kilómetros, tiempo y entregas fallidas. |
-| Alta | Avisos de llegada, incidencias y soporte | Evita llamadas dispersas y mantiene informado al cliente. |
+| Alta | Optimización automática sobre red vial | La planificación y secuencia manual ya existen; falta calcular distancia y tiempo reales. |
+| Media | Soporte conversacional y avisos externos | Los avisos internos ya existen; correo, SMS o WhatsApp requieren proveedor y consentimiento. |
 | Media | Cuentas por cobrar y factura electrónica | Convierte ventas aprobadas en contabilidad real. |
 | Media | Tarifas por cliente y zona | Permite atender hogares, oficinas y mayoristas sin duplicar productos. |
 | Media | Compras, proveedores y múltiples bodegas | Necesario cuando una distribuidora escala. |
@@ -117,14 +120,15 @@ administrador.
 
 ## Siguiente secuencia recomendada
 
-1. Convertir las coordenadas de las direcciones guardadas en paradas diarias y
-   permitir que el administrador ordene y asigne la ruta.
-2. Incorporar estados de incidencia (`cliente ausente`, `dirección incorrecta`,
-   `reprogramado`) y avisos de salida o llegada.
-3. Añadir saldos por cliente, pagos parciales y exportación contable antes de
+1. Medir durante el piloto tiempos, incidencias y calidad de coordenadas para
+   elegir un motor vial y automatizar la secuencia sin depender de un servicio
+   gratuito sin garantía operativa.
+2. Añadir saldos por cliente, pagos parciales y exportación contable antes de
    integrar facturación electrónica ecuatoriana.
-4. Implementar listas de precio por cliente o zona y ventanas de entrega.
+3. Implementar listas de precio por cliente o zona y ventanas de entrega.
+4. Conectar avisos externos después de verificar dominio y proveedor.
 
 No conviene incorporar todas estas capacidades a la vez durante el piloto. La
-libreta de direcciones ya implementada permite medir calidad de datos y entregas
-fallidas; esos datos deben orientar el diseño del optimizador de rutas.
+libreta de direcciones y el planificador ya implementados permiten medir calidad
+de datos, duración e intentos fallidos; esos datos deben orientar el diseño del
+optimizador automático.

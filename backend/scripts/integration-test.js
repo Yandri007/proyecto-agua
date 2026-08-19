@@ -22,6 +22,8 @@ let batchId;
 let vehicleId;
 let closingId;
 let deliveryOrderId;
+let incidentOrderId;
+let deliveryRouteId;
 let recurringScheduleId;
 let recurringOrderId;
 let savedAddressId;
@@ -763,10 +765,93 @@ const run = async () => {
     assert.equal(result.response.status, 201);
     deliveryOrderId = Number(result.data.id);
 
-    result = await request(`/api/pedidos/${deliveryOrderId}/asignar`, {
-      method: 'PUT', body: JSON.stringify({ repartidor_id: driverId })
+    result = await request('/api/pedidos', {
+      method: 'POST',
+      body: JSON.stringify({
+        productos: [{ producto_id: product.id, cantidad: 1 }],
+        direccion_entrega: 'Entrega con incidencia 789',
+        metodo_pago: 'efectivo'
+      })
+    }, clientCookie);
+    assert.equal(result.response.status, 201);
+    incidentOrderId = Number(result.data.id);
+
+    result = await request('/api/rutas', {}, clientCookie);
+    assert.equal(result.response.status, 403);
+
+    result = await request(`/api/rutas/disponibles?fecha=${todayEcuador}`, {}, adminCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.some((item) => Number(item.id) === deliveryOrderId), true);
+    assert.equal(result.data.some((item) => Number(item.id) === incidentOrderId), true);
+
+    result = await request('/api/rutas', {
+      method: 'POST',
+      body: JSON.stringify({
+        nombre: 'Ruta de integración',
+        fecha: todayEcuador,
+        repartidor_id: driverId,
+        pedido_ids: [deliveryOrderId, incidentOrderId]
+      })
+    }, adminCookie);
+    assert.equal(result.response.status, 201, JSON.stringify(result.data));
+    deliveryRouteId = Number(result.data.id);
+    assert.equal(result.data.paradas.length, 2);
+    const deliveryStopId = Number(result.data.paradas.find((item) => Number(item.pedido_id) === deliveryOrderId).id);
+    const incidentStopId = Number(result.data.paradas.find((item) => Number(item.pedido_id) === incidentOrderId).id);
+
+    result = await request(`/api/rutas?fecha=${todayEcuador}`, {}, secondary.cookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.some((item) => Number(item.id) === deliveryRouteId), false);
+
+    result = await request(`/api/rutas/${deliveryRouteId}/orden`, {
+      method: 'PUT',
+      body: JSON.stringify({ parada_ids: [incidentStopId, deliveryStopId] })
     }, adminCookie);
     assert.equal(result.response.status, 200);
+
+    result = await request('/api/rutas/mi-ruta', {}, driverCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(Number(result.data.ruta.id), deliveryRouteId);
+    assert.equal(Number(result.data.ruta.paradas[0].pedido_id), incidentOrderId);
+
+    result = await request(`/api/rutas/${deliveryRouteId}/iniciar`, { method: 'POST' }, adminCookie);
+    assert.equal(result.response.status, 403);
+
+    result = await request(`/api/rutas/${deliveryRouteId}/iniciar`, { method: 'POST' }, driverCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.estado, 'en_curso');
+
+    result = await request(`/api/rutas/paradas/${incidentStopId}/en-camino`, {
+      method: 'POST'
+    }, driverCookie);
+    assert.equal(result.response.status, 200);
+
+    result = await request(`/api/rutas/paradas/${incidentStopId}/incidencia`, {
+      method: 'POST',
+      body: JSON.stringify({
+        codigo: 'cliente_ausente',
+        detalle: 'No respondió al llamado',
+        reprogramar_para: tomorrowEcuador
+      })
+    }, driverCookie);
+    assert.equal(result.response.status, 200);
+
+    result = await request(`/api/rutas/disponibles?fecha=${tomorrowEcuador}`, {}, adminCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.some((item) => Number(item.id) === incidentOrderId), true);
+
+    result = await request(`/api/rutas/paradas/${deliveryStopId}/en-camino`, {
+      method: 'POST'
+    }, driverCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(Number(result.data.pedido_id), deliveryOrderId);
+
+    result = await request('/api/notificaciones', {}, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.notificaciones.some((item) => item.tipo === 'entrega_programada'), true);
+    assert.equal(result.data.notificaciones.some((item) => item.tipo === 'ruta_iniciada'), true);
+    assert.equal(result.data.notificaciones.some((item) => item.tipo === 'incidencia_entrega'), true);
+    assert.equal(result.data.notificaciones.some((item) => item.tipo === 'repartidor_en_camino'), true);
 
     result = await request(`/api/pedidos/${deliveryOrderId}/estado`, {
       method: 'PUT', body: JSON.stringify({ estado: 'entregado' })
@@ -788,6 +873,28 @@ const run = async () => {
     const deliveryTotal = Number(result.data.total);
     assert.equal(Number(result.data.deposito_envases), 1.5);
     assert.equal(deliveryTotal, Number(product.precio) + 1.5);
+
+    result = await request(`/api/rutas?fecha=${todayEcuador}`, {}, adminCookie);
+    assert.equal(result.response.status, 200);
+    const completedRoute = result.data.find((item) => Number(item.id) === deliveryRouteId);
+    assert.equal(completedRoute.estado, 'completada');
+    assert.equal(completedRoute.paradas.find((item) => Number(item.id) === deliveryStopId).estado, 'entregada');
+    assert.equal(completedRoute.paradas.find((item) => Number(item.id) === incidentStopId).estado, 'incidencia');
+
+    result = await request('/api/notificaciones', {}, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.notificaciones.some((item) => item.tipo === 'pedido_entregado'), true);
+    const unreadNotification = result.data.notificaciones.find((item) => !item.leida);
+    assert.ok(unreadNotification);
+    result = await request(`/api/notificaciones/${unreadNotification.id}/leida`, {
+      method: 'PATCH'
+    }, clientCookie);
+    assert.equal(result.response.status, 200);
+    result = await request('/api/notificaciones/leer-todas', { method: 'POST' }, clientCookie);
+    assert.equal(result.response.status, 200);
+    result = await request('/api/notificaciones', {}, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.no_leidas, 0);
 
     result = await request(`/api/logistica/comprobantes/${deliveryOrderId}`, {}, adminCookie);
     assert.equal(result.response.status, 200);
@@ -854,7 +961,7 @@ const run = async () => {
     assert.equal(result.response.status, 200);
     assert.ok(result.data.some((entry) => entry.accion === 'usuario.login'));
 
-    console.log('Integración verificada: portal de clientes, identidad, recurrencias, módulos, personal, planta, flota, ventas, GPS, comprobantes, cierres y stock');
+    console.log('Integración verificada: portal, identidad, direcciones, rutas, incidencias, notificaciones, recurrencias, planta, flota, ventas, GPS, comprobantes, cierres y stock');
   } finally {
     for (const socket of liveSockets) socket.disconnect();
     const client = await pool.connect();
@@ -902,6 +1009,10 @@ const run = async () => {
         await client.query('DELETE FROM detalle_pedidos WHERE pedido_id = $1', [deliveryOrderId]);
         await client.query('DELETE FROM pedidos WHERE id = $1', [deliveryOrderId]);
       }
+      if (incidentOrderId) {
+        await client.query('DELETE FROM detalle_pedidos WHERE pedido_id = $1', [incidentOrderId]);
+        await client.query('DELETE FROM pedidos WHERE id = $1', [incidentOrderId]);
+      }
       if (recurringOrderId) {
         await client.query('DELETE FROM detalle_pedidos WHERE pedido_id = $1', [recurringOrderId]);
         await client.query('DELETE FROM pedidos WHERE id = $1', [recurringOrderId]);
@@ -912,6 +1023,9 @@ const run = async () => {
         await client.query('DELETE FROM pedidos_recurrentes WHERE id = $1', [recurringScheduleId]);
       }
       if (companyIds.length > 0) {
+        await client.query('DELETE FROM notificaciones WHERE empresa_id = ANY($1::int[])', [companyIds]);
+        await client.query('DELETE FROM paradas_ruta WHERE empresa_id = ANY($1::int[])', [companyIds]);
+        await client.query('DELETE FROM rutas_entrega WHERE empresa_id = ANY($1::int[])', [companyIds]);
         await client.query('DELETE FROM ejecuciones_pedidos_recurrentes WHERE pedido_recurrente_id IN (SELECT id FROM pedidos_recurrentes WHERE empresa_id = ANY($1::int[]))', [companyIds]);
         await client.query('DELETE FROM detalle_pedidos_recurrentes WHERE pedido_recurrente_id IN (SELECT id FROM pedidos_recurrentes WHERE empresa_id = ANY($1::int[]))', [companyIds]);
         await client.query('DELETE FROM pedidos_recurrentes WHERE empresa_id = ANY($1::int[])', [companyIds]);

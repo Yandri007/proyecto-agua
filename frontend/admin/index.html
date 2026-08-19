@@ -99,6 +99,26 @@
         .client-link-row button { min-width:42px; height:42px; border:0; border-radius:6px; cursor:pointer; }
         .client-link-actions { display:flex; gap:8px; margin-top:9px; }
         .client-link-actions button { border:1px solid rgba(255,255,255,.35); background:transparent; color:white; border-radius:6px; padding:8px 11px; cursor:pointer; }
+        .route-planner-grid { display:grid; grid-template-columns:minmax(280px,.9fr) minmax(320px,1.1fr); gap:18px; margin-bottom:22px; }
+        .route-panel { background:white; border:1px solid #dbe3ec; border-radius:8px; padding:18px; min-width:0; }
+        .route-panel h3 { margin-bottom:6px; }
+        .route-panel > p { color:#667085; font-size:12px; margin-bottom:14px; }
+        .route-order-list { display:flex; flex-direction:column; gap:8px; max-height:430px; overflow:auto; }
+        .route-order { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:11px; border:1px solid #e1e7ef; border-radius:7px; background:#fbfcfe; }
+        .route-order.selected { border-color:#168aad; background:#eef9fc; }
+        .route-order input { width:18px; height:18px; accent-color:#087ca7; }
+        .route-order strong, .route-stop strong { display:block; }
+        .route-order small, .route-stop small { color:#667085; line-height:1.4; }
+        .route-order-actions { display:flex; gap:5px; }
+        .route-order-actions button { width:34px; height:34px; border:1px solid #cfd8e3; border-radius:6px; background:white; color:#075985; cursor:pointer; }
+        .route-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+        .route-card { background:white; border:1px solid #dbe3ec; border-radius:8px; padding:18px; }
+        .route-card-header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
+        .route-progress { height:7px; background:#e7edf3; border-radius:4px; overflow:hidden; margin:10px 0 14px; }
+        .route-progress span { display:block; height:100%; background:#168aad; }
+        .route-stop { display:grid; grid-template-columns:28px 1fr auto; gap:9px; padding:10px 0; border-top:1px solid #edf0f4; align-items:center; }
+        .route-stop-number { width:26px; height:26px; border-radius:50%; background:#e0f2fe; color:#075985; display:grid; place-items:center; font-size:12px; font-weight:700; }
+        .route-empty { color:#667085; padding:24px; text-align:center; background:white; border:1px dashed #cbd5e1; border-radius:8px; }
         @media (max-width: 1000px) { .module-grid { grid-template-columns: 1fr; } .compact-form-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 760px) {
             .sidebar { width: 72px; }
@@ -114,6 +134,7 @@
             .charts-grid { grid-template-columns: 1fr; gap: 14px; }
             .compact-form-grid { grid-template-columns: 1fr; }
             .client-portal { grid-template-columns:1fr; }
+            .route-planner-grid, .route-list { grid-template-columns:1fr; }
             .data-table table { min-width: 720px; }
             .stat-number { font-size: 24px; }
         }
@@ -141,6 +162,7 @@
             <div class="sidebar-nav">
                 <a onclick="showTab('dashboard')" id="menu-dashboard" class="active"><i class="fas fa-chart-line"></i><span> Dashboard</span></a>
                 <a onclick="showTab('pedidos')" id="menu-pedidos"><i class="fas fa-shopping-cart"></i><span> Pedidos</span></a>
+                <a onclick="showTab('rutas')" id="menu-rutas"><i class="fas fa-route"></i><span> Rutas</span></a>
                 <a onclick="showTab('clientes')" id="menu-clientes"><i class="fas fa-users"></i><span> Clientes</span></a>
                 <a onclick="showTab('recurrentes')" id="menu-recurrentes"><i class="fas fa-calendar-check"></i><span> Programaciones</span></a>
                 <a onclick="showTab('inventario')" id="menu-inventario"><i class="fas fa-boxes"></i><span> Inventario</span></a>
@@ -210,6 +232,30 @@
                     <button class="btn-export" onclick="exportarExcel()"><i class="fas fa-file-excel"></i> Exportar</button>
                 </div>
                 <div class="data-table"><table><thead><tr><th>ID</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Repartidor</th><th>Fecha</th><th>Acción</th></tr></thead><tbody id="tablaPedidosBody"></tbody></table></div>
+            </div>
+
+            <div id="tab-rutas" class="tab">
+                <div class="filters-bar">
+                    <div class="filter-group"><label for="rutaFecha">Fecha de operación</label><input id="rutaFecha" type="date" onchange="cargarRutasAdmin()"></div>
+                    <div class="filter-group"><label for="rutaNombre">Nombre de ruta</label><input id="rutaNombre" maxlength="100" placeholder="Ruta norte AM"></div>
+                    <div class="filter-group"><label for="rutaRepartidor">Repartidor</label><select id="rutaRepartidor"><option value="">Selecciona un repartidor</option></select></div>
+                    <button class="btn-filter" type="button" onclick="cargarRutasAdmin()"><i class="fas fa-rotate"></i> Actualizar</button>
+                </div>
+                <div class="route-planner-grid">
+                    <section class="route-panel">
+                        <h3><i class="fas fa-boxes-stacked"></i> Pedidos disponibles</h3>
+                        <p>Selecciona pedidos pendientes para la fecha elegida.</p>
+                        <div id="pedidosRutaDisponibles" class="route-order-list"></div>
+                    </section>
+                    <section class="route-panel">
+                        <h3><i class="fas fa-list-ol"></i> Orden de salida</h3>
+                        <p>Usa las flechas para definir la secuencia que verá el repartidor.</p>
+                        <div id="pedidosRutaSeleccionados" class="route-order-list"></div>
+                        <button id="crearRutaButton" class="btn-export" type="button" style="width:100%; margin-top:14px;" onclick="crearRuta()"><i class="fas fa-route"></i> Crear y asignar ruta</button>
+                    </section>
+                </div>
+                <div class="reporte-header"><h3><i class="fas fa-truck-fast"></i> Rutas de la fecha</h3><span id="rutasResumen" class="map-status"></span></div>
+                <div id="rutasLista" class="route-list"></div>
             </div>
 
             <div id="tab-clientes" class="tab">
@@ -386,7 +432,7 @@
     </div>
 
     <script nonce="{{CSP_NONCE}}">
-        let token = null, socket = null, repartidores = [], productos = [], pedidos = [], ventasRuta = [], programacionesAdmin = [], vehiculos = [], cierresRuta = [], ventasChart, productosChart, ventasDiaSemanaChart, ventasMesDetalleChart, pedidoPorAsignar = null;
+        let token = null, socket = null, repartidores = [], productos = [], pedidos = [], ventasRuta = [], programacionesAdmin = [], vehiculos = [], cierresRuta = [], rutasEntrega = [], pedidosRuta = [], seleccionRuta = [], ventasChart, productosChart, ventasDiaSemanaChart, ventasMesDetalleChart, pedidoPorAsignar = null;
         let mapaOperativo = null;
         const marcadoresOperativos = new Map();
         let billingConfig = null;
@@ -413,6 +459,8 @@
                     if (activeTab === 'tab-ventas-ruta') cargarVentasRuta();
                 } else if (resource.includes('/recurrentes')) {
                     if (activeTab === 'tab-recurrentes') cargarRecurrentesAdmin();
+                } else if (resource.includes('/rutas')) {
+                    if (activeTab === 'tab-rutas') cargarRutasAdmin();
                 } else if (resource.includes('/logistica')) {
                     if (activeTab === 'tab-logistica') cargarLogistica();
                 } else if (resource.includes('/organizacion')) {
@@ -499,6 +547,10 @@
                 actualizarUbicacionOperativa(data);
             });
 
+            socket.on('ruta_actualizada', () => {
+                if (document.getElementById('tab-rutas').classList.contains('active')) cargarRutasAdmin();
+            });
+
             socket.on('pedido_cancelado', (data) => {
                 mostrarToast(`Pedido #${data.pedidoId} fue cancelado por el cliente`, 'warning');
                 cargarPedidosCompletos();
@@ -517,6 +569,7 @@
             document.addEventListener('aquacontrol:reconnected', () => cargarDatosIniciales());
             
             inicializarSelectores();
+            prepararPlanificadorRutas();
             inicializarMapaOperativo();
             try {
                 await cargarDatosIniciales();
@@ -651,6 +704,12 @@
                 const select = document.getElementById('filtroRepartidor');
                 if (select) {
                     select.innerHTML = '<option value="">Todos</option>' + repartidores.map(r => `<option value="${r.id}">${escapeHtml(r.nombre)}</option>`).join('');
+                }
+                const routeSelect = document.getElementById('rutaRepartidor');
+                if (routeSelect) {
+                    const selected = routeSelect.value;
+                    routeSelect.innerHTML = '<option value="">Selecciona un repartidor</option>' + repartidores.map(r => `<option value="${r.id}">${escapeHtml(r.nombre)}</option>`).join('');
+                    if (repartidores.some(item => String(item.id) === selected)) routeSelect.value = selected;
                 }
                 const tbody = document.getElementById('tablaRepartidoresBody');
                 if (tbody) {
@@ -952,6 +1011,185 @@
                     if (idx + 1 === new Date().getMonth() + 1) option.selected = true;
                     mesSelect.appendChild(option);
                 });
+            }
+        }
+
+        // ============ RUTAS DE ENTREGA ============
+        function fechaOperacionLocal() {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).format(new Date());
+        }
+
+        function prepararPlanificadorRutas() {
+            const input = document.getElementById('rutaFecha');
+            if (!input) return;
+            if (!input.value) input.value = fechaOperacionLocal();
+        }
+
+        async function cargarRutasAdmin() {
+            prepararPlanificadorRutas();
+            const date = document.getElementById('rutaFecha').value;
+            try {
+                const [available, routes] = await Promise.all([
+                    requestJson(`${API}/rutas/disponibles?fecha=${encodeURIComponent(date)}`),
+                    requestJson(`${API}/rutas?fecha=${encodeURIComponent(date)}`)
+                ]);
+                pedidosRuta = available;
+                rutasEntrega = routes;
+                const availableIds = new Set(pedidosRuta.map(item => Number(item.id)));
+                seleccionRuta = seleccionRuta.filter(id => availableIds.has(Number(id)));
+                renderPedidosRuta();
+                renderSeleccionRuta();
+                renderRutasAdmin();
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible cargar las rutas', 'error');
+            }
+        }
+
+        function renderPedidosRuta() {
+            const container = document.getElementById('pedidosRutaDisponibles');
+            if (!pedidosRuta.length) {
+                container.innerHTML = '<div class="route-empty">No hay pedidos pendientes para esta fecha.</div>';
+                return;
+            }
+            container.innerHTML = pedidosRuta.map(order => {
+                const selected = seleccionRuta.includes(Number(order.id));
+                return `<label class="route-order ${selected ? 'selected' : ''}">
+                    <input type="checkbox" ${selected ? 'checked' : ''} onchange="alternarPedidoRuta(${order.id})">
+                    <span><strong>Pedido #${order.id} · ${escapeHtml(order.cliente_nombre)}</strong><small>${escapeHtml(order.direccion_entrega)}<br>$${Number(order.total).toFixed(2)} · ${order.latitud_entrega !== null ? 'Ubicación disponible' : 'Sin coordenadas'}</small></span>
+                    <span class="badge badge-pendiente">Pendiente</span>
+                </label>`;
+            }).join('');
+        }
+
+        function alternarPedidoRuta(orderId) {
+            const id = Number(orderId);
+            const index = seleccionRuta.indexOf(id);
+            if (index >= 0) seleccionRuta.splice(index, 1);
+            else seleccionRuta.push(id);
+            renderPedidosRuta();
+            renderSeleccionRuta();
+        }
+
+        function renderSeleccionRuta() {
+            const container = document.getElementById('pedidosRutaSeleccionados');
+            const byId = new Map(pedidosRuta.map(item => [Number(item.id), item]));
+            if (!seleccionRuta.length) {
+                container.innerHTML = '<div class="route-empty">Selecciona los pedidos en el panel izquierdo.</div>';
+                return;
+            }
+            container.innerHTML = seleccionRuta.map((id, index) => {
+                const order = byId.get(Number(id));
+                if (!order) return '';
+                return `<div class="route-order selected">
+                    <span class="route-stop-number">${index + 1}</span>
+                    <span><strong>Pedido #${order.id} · ${escapeHtml(order.cliente_nombre)}</strong><small>${escapeHtml(order.direccion_entrega)}</small></span>
+                    <span class="route-order-actions"><button type="button" onclick="moverPedidoRuta(${order.id}, -1)" ${index === 0 ? 'disabled' : ''} title="Subir parada" aria-label="Subir parada"><i class="fas fa-arrow-up"></i></button><button type="button" onclick="moverPedidoRuta(${order.id}, 1)" ${index === seleccionRuta.length - 1 ? 'disabled' : ''} title="Bajar parada" aria-label="Bajar parada"><i class="fas fa-arrow-down"></i></button></span>
+                </div>`;
+            }).join('');
+        }
+
+        function moverPedidoRuta(orderId, direction) {
+            const index = seleccionRuta.indexOf(Number(orderId));
+            const target = index + Number(direction);
+            if (index < 0 || target < 0 || target >= seleccionRuta.length) return;
+            [seleccionRuta[index], seleccionRuta[target]] = [seleccionRuta[target], seleccionRuta[index]];
+            renderSeleccionRuta();
+        }
+
+        async function crearRuta() {
+            const name = document.getElementById('rutaNombre').value.trim();
+            const driverId = Number(document.getElementById('rutaRepartidor').value);
+            if (name.length < 3 || !driverId || !seleccionRuta.length) {
+                mostrarToast('Completa nombre, repartidor y al menos un pedido', 'error');
+                return;
+            }
+            const button = document.getElementById('crearRutaButton');
+            button.disabled = true;
+            try {
+                const route = await requestJson(`${API}/rutas`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nombre: name,
+                        fecha: document.getElementById('rutaFecha').value,
+                        repartidor_id: driverId,
+                        pedido_ids: seleccionRuta
+                    })
+                });
+                seleccionRuta = [];
+                document.getElementById('rutaNombre').value = '';
+                mostrarToast(`Ruta ${route.nombre} creada con ${route.paradas.length} paradas`, 'success');
+                await Promise.all([cargarRutasAdmin(), cargarPedidosCompletos()]);
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible crear la ruta', 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function renderRutasAdmin() {
+            const container = document.getElementById('rutasLista');
+            document.getElementById('rutasResumen').textContent = `${rutasEntrega.length} ruta${rutasEntrega.length === 1 ? '' : 's'}`;
+            if (!rutasEntrega.length) {
+                container.innerHTML = '<div class="route-empty">Todavía no hay rutas creadas para esta fecha.</div>';
+                return;
+            }
+            const routeStatus = {
+                planificada: ['Planificada', 'badge-pendiente'],
+                en_curso: ['En curso', 'badge-camino'],
+                completada: ['Completada', 'badge-entregado'],
+                cancelada: ['Cancelada', 'badge-cancelado']
+            };
+            const stopStatus = {
+                pendiente: 'Pendiente', en_camino: 'En camino', entregada: 'Entregada',
+                incidencia: 'Incidencia', cancelada: 'Cancelada'
+            };
+            container.innerHTML = rutasEntrega.map(route => {
+                const terminal = route.paradas.filter(stop => ['entregada', 'incidencia', 'cancelada'].includes(stop.estado)).length;
+                const progress = route.paradas.length ? Math.round((terminal / route.paradas.length) * 100) : 0;
+                const status = routeStatus[route.estado] || [route.estado, 'badge-pendiente'];
+                return `<article class="route-card">
+                    <div class="route-card-header"><div><h3>${escapeHtml(route.nombre)}</h3><div class="table-detail"><i class="fas fa-user"></i> ${escapeHtml(route.repartidor_nombre)} · ${route.paradas.length} paradas</div></div><span class="badge ${status[1]}">${status[0]}</span></div>
+                    <div class="route-progress" title="${progress}% completado"><span style="width:${progress}%"></span></div>
+                    <div>${route.paradas.map((stop, index) => `<div class="route-stop">
+                        <span class="route-stop-number">${stop.orden}</span>
+                        <span><strong>Pedido #${stop.pedido_id} · ${escapeHtml(stop.cliente_nombre)}</strong><small>${escapeHtml(stop.direccion_entrega)}<br>${stopStatus[stop.estado] || escapeHtml(stop.estado)}${stop.incidencia_codigo ? ` · ${escapeHtml(stop.incidencia_codigo.replaceAll('_', ' '))}` : ''}${stop.incidencia_detalle ? `<br>${escapeHtml(stop.incidencia_detalle)}` : ''}${stop.fecha_programada && stop.estado === 'incidencia' ? `<br>Reprogramado: ${new Date(`${String(stop.fecha_programada).slice(0, 10)}T12:00:00`).toLocaleDateString('es-EC')}` : ''}</small></span>
+                        ${route.estado === 'planificada' ? `<span class="route-order-actions"><button type="button" onclick="moverParadaCreada(${route.id}, ${stop.id}, -1)" ${index === 0 ? 'disabled' : ''} title="Subir parada"><i class="fas fa-arrow-up"></i></button><button type="button" onclick="moverParadaCreada(${route.id}, ${stop.id}, 1)" ${index === route.paradas.length - 1 ? 'disabled' : ''} title="Bajar parada"><i class="fas fa-arrow-down"></i></button></span>` : `<span class="badge ${stop.estado === 'entregada' ? 'badge-entregado' : stop.estado === 'en_camino' ? 'badge-camino' : stop.estado === 'incidencia' ? 'badge-cancelado' : 'badge-pendiente'}">${stopStatus[stop.estado] || escapeHtml(stop.estado)}</span>`}
+                    </div>`).join('')}</div>
+                    ${['planificada', 'en_curso'].includes(route.estado) ? `<button class="btn-danger" type="button" style="margin-top:12px;" onclick="cancelarRuta(${route.id})"><i class="fas fa-ban"></i> Cancelar ruta</button>` : ''}
+                </article>`;
+            }).join('');
+        }
+
+        async function moverParadaCreada(routeId, stopId, direction) {
+            const route = rutasEntrega.find(item => Number(item.id) === Number(routeId));
+            if (!route) return;
+            const index = route.paradas.findIndex(item => Number(item.id) === Number(stopId));
+            const target = index + Number(direction);
+            if (index < 0 || target < 0 || target >= route.paradas.length) return;
+            [route.paradas[index], route.paradas[target]] = [route.paradas[target], route.paradas[index]];
+            route.paradas.forEach((stop, stopIndex) => { stop.orden = stopIndex + 1; });
+            renderRutasAdmin();
+            try {
+                await requestJson(`${API}/rutas/${routeId}/orden`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ parada_ids: route.paradas.map(item => item.id) })
+                });
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible cambiar el orden', 'error');
+                await cargarRutasAdmin();
+            }
+        }
+
+        async function cancelarRuta(routeId) {
+            if (!confirm('Los pedidos no entregados volverán a pendientes. ¿Cancelar esta ruta?')) return;
+            try {
+                await requestJson(`${API}/rutas/${routeId}/cancelar`, { method: 'POST' });
+                mostrarToast('Ruta cancelada y pedidos liberados', 'success');
+                await Promise.all([cargarRutasAdmin(), cargarPedidosCompletos()]);
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible cancelar la ruta', 'error');
             }
         }
 
@@ -1663,6 +1901,7 @@
             if (menuElement) menuElement.classList.add('active');
             if (tab === 'inventario') cargarInventario(); 
             if (tab === 'pedidos') aplicarFiltros(); 
+            if (tab === 'rutas') cargarRutasAdmin();
             if (tab === 'clientes') cargarClientes();
             if (tab === 'recurrentes') cargarRecurrentesAdmin();
             if (tab === 'auditoria') cargarAuditoria();

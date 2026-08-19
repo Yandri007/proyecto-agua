@@ -30,7 +30,7 @@ penetración independiente.
   configurable de ubicaciones.
 - Firma de webhooks de pago y comprobación de comercio y antigüedad.
 - Escaneo de secretos de alta confianza y revisión de archivos ignorados.
-- RLS obligatorio en las 25 tablas de negocio del esquema `public`.
+- RLS obligatorio en las 28 tablas de negocio del esquema `public`.
 - Revocación de lectura y escritura para los roles Data API `anon` y
   `authenticated`, además de privilegios cerrados por defecto para objetos
   futuros.
@@ -39,7 +39,7 @@ penetración independiente.
 
 - `npm test`: 22 de 22 pruebas aprobadas.
 - `npm run check`: 8 HTML y 6 scripts verificados.
-- `npm run audit:db-security`: 25 tablas con RLS y sin acceso Data API público.
+- `npm run audit:db-security`: 28 tablas con RLS y sin acceso Data API público.
 - `npm run test:integration`: identidad, recurrencias, módulos, personal,
   planta, flota, ventas, GPS, comprobantes, cierres, stock y eventos en tiempo
   real para administrador, cliente, repartidor, RH y jefe de planta aprobados.

@@ -3,6 +3,8 @@ const pool = require('../config/database');
 const { verifyToken, checkRole } = require('../middleware/auth');
 const { getPlan, requireActiveSubscription } = require('../utils/plans');
 const { getCompanyModules } = require('../utils/modules');
+const { createNotification, emitNotifications } = require('../utils/notifications');
+const { syncRouteStopForOrder } = require('../utils/deliveryRoutes');
 
 const router = express.Router();
 const ORDER_PAYMENT_METHODS = new Set(['efectivo', 'transferencia']);
@@ -573,6 +575,7 @@ router.put('/:id/asignar', checkRole(['admin']), async (req, res) => {
   }
 
   const client = await pool.connect();
+  const notifications = [];
   try {
     await client.query('BEGIN');
     const driver = await client.query(
@@ -598,7 +601,29 @@ router.put('/:id/asignar', checkRole(['admin']), async (req, res) => {
       return res.status(409).json({ error: 'El pedido ya no está disponible para asignar' });
     }
 
+    notifications.push(await createNotification({
+      client,
+      empresaId: req.user.empresa_id,
+      userId: driverId,
+      type: 'pedido_asignado',
+      title: 'Nuevo pedido asignado',
+      message: `El pedido #${orderId} fue asignado para reparto.`,
+      orderId,
+      eventKey: `order-assigned-driver-${orderId}-${driverId}`
+    }));
+    notifications.push(await createNotification({
+      client,
+      empresaId: req.user.empresa_id,
+      userId: result.rows[0].cliente_id,
+      type: 'entrega_asignada',
+      title: 'Tu pedido tiene repartidor',
+      message: `El pedido #${orderId} fue asignado para entrega.`,
+      orderId,
+      eventKey: `order-assigned-client-${orderId}`
+    }));
+
     await client.query('COMMIT');
+    emitNotifications(req.app.get('io'), notifications);
     emitToUser(req, driverId, 'nuevo_pedido_asignado', { pedidoId: orderId });
     emitToUser(req, result.rows[0].cliente_id, 'pedido_actualizado', {
       pedidoId: orderId,
@@ -626,6 +651,8 @@ router.put('/:id/estado', async (req, res) => {
   }
 
   const client = await pool.connect();
+  let notification = null;
+  let affectedRouteIds = [];
   try {
     await client.query('BEGIN');
     const orderResult = await client.query(
@@ -688,8 +715,48 @@ router.put('/:id/estado', async (req, res) => {
        RETURNING *`,
       [requestedState, orderId, req.user.empresa_id]
     );
+    affectedRouteIds = await syncRouteStopForOrder({
+      client,
+      empresaId: req.user.empresa_id,
+      orderId,
+      orderState: requestedState
+    });
+    if (requestedState === 'en_camino' || requestedState === 'entregado'
+        || (requestedState === 'cancelado' && req.user.rol === 'admin')) {
+      const notificationContent = requestedState === 'en_camino'
+        ? {
+            type: 'repartidor_en_camino',
+            title: 'Tu repartidor va en camino',
+            message: `El pedido #${orderId} salió para entrega.`,
+            eventKey: `order-on-way-${orderId}`
+          }
+        : requestedState === 'entregado'
+          ? {
+              type: 'pedido_entregado',
+              title: 'Pedido entregado',
+              message: `El pedido #${orderId} fue marcado como entregado.`,
+              eventKey: `order-delivered-${orderId}`
+            }
+          : {
+              type: 'pedido_cancelado',
+              title: 'Pedido cancelado',
+              message: `Administración canceló el pedido #${orderId}.`,
+              eventKey: `order-cancelled-${orderId}`
+            };
+      notification = await createNotification({
+        client,
+        empresaId: req.user.empresa_id,
+        userId: order.cliente_id,
+        orderId,
+        ...notificationContent
+      });
+    }
     await client.query('COMMIT');
 
+    emitNotifications(req.app.get('io'), [notification]);
+    for (const routeId of affectedRouteIds) {
+      req.app.get('io')?.to(`empresa:${req.user.empresa_id}`).emit('ruta_actualizada', { rutaId: routeId });
+    }
     emitToAdmins(req, req.user.empresa_id, 'pedido_actualizado', {
       pedidoId: orderId,
       estado: requestedState

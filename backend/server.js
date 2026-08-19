@@ -15,6 +15,7 @@ const { auditSuccessfulMutations } = require('./utils/audit');
 const { hasTenantAccess } = require('./utils/plans');
 const { scheduleMaintenance } = require('./utils/maintenance');
 const logger = require('./utils/logger');
+const { createNotification, emitNotifications } = require('./utils/notifications');
 
 const authRoutes = require('./routes/auth.routes');
 const pedidosRoutes = require('./routes/pedidos.routes');
@@ -28,6 +29,8 @@ const logisticaRoutes = require('./routes/logistica.routes');
 const recurrentesRoutes = require('./routes/recurrentes.routes');
 const platformRoutes = require('./routes/platform.routes');
 const direccionesRoutes = require('./routes/direcciones.routes');
+const rutasRoutes = require('./routes/rutas.routes');
+const notificacionesRoutes = require('./routes/notificaciones.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -186,6 +189,8 @@ app.use('/api/logistica', logisticaRoutes);
 app.use('/api/recurrentes', recurrentesRoutes);
 app.use('/api/platform', platformRoutes);
 app.use('/api/direcciones', direccionesRoutes);
+app.use('/api/rutas', rutasRoutes);
+app.use('/api/notificaciones', notificacionesRoutes);
 
 app.get('/api/health', async (req, res) => {
   try {
@@ -348,19 +353,58 @@ io.on('connection', (socket) => {
         return acknowledge({ ok: false, error: 'Debes autorizar el uso de ubicación' });
       }
 
+      const plannedStop = await db.query(
+        `SELECT pr.id, pr.ruta_id, pr.estado, r.estado AS ruta_estado,
+                EXISTS (
+                  SELECT 1 FROM paradas_ruta other
+                  WHERE other.ruta_id = pr.ruta_id
+                    AND other.estado = 'en_camino'
+                    AND other.id <> pr.id
+                ) AS otra_parada_activa
+         FROM paradas_ruta pr
+         JOIN rutas_entrega r ON r.id = pr.ruta_id AND r.empresa_id = pr.empresa_id
+         WHERE pr.pedido_id = $1 AND pr.empresa_id = $2
+           AND r.repartidor_id = $3
+           AND pr.estado IN ('pendiente', 'en_camino')
+           AND r.estado IN ('planificada', 'en_curso')
+         LIMIT 1`,
+        [orderId, user.empresa_id, user.id]
+      );
+      const stop = plannedStop.rows[0];
+      if (stop?.ruta_estado === 'planificada') {
+        return acknowledge({ ok: false, error: 'Inicia la ruta antes de compartir ubicación' });
+      }
+      if (stop?.otra_parada_activa) {
+        return acknowledge({ ok: false, error: 'Este pedido no es la parada activa de la ruta' });
+      }
+
       const result = await db.query(
-        `UPDATE pedidos
-         SET estado = CASE WHEN estado = 'asignado' THEN 'en_camino' ELSE estado END,
+        `WITH target AS (
+           SELECT id, estado FROM pedidos
+           WHERE id = $1 AND empresa_id = $2 AND repartidor_id = $3
+             AND estado IN ('asignado', 'en_camino')
+           FOR UPDATE
+         )
+         UPDATE pedidos p
+         SET estado = CASE WHEN p.estado = 'asignado' THEN 'en_camino' ELSE p.estado END,
              actualizado_en = CURRENT_TIMESTAMP
-         WHERE id = $1
-           AND empresa_id = $2
-           AND repartidor_id = $3
-           AND estado IN ('asignado', 'en_camino')
-         RETURNING cliente_id, estado`,
+         FROM target
+         WHERE p.id = target.id
+         RETURNING p.cliente_id, p.estado, target.estado AS estado_anterior`,
         [orderId, user.empresa_id, user.id]
       );
       if (result.rowCount === 0) {
         return acknowledge({ ok: false, error: 'Pedido no autorizado' });
+      }
+
+      if (stop?.estado === 'pendiente') {
+        await db.query(
+          `UPDATE paradas_ruta
+           SET estado = 'en_camino', iniciada_en = COALESCE(iniciada_en, CURRENT_TIMESTAMP),
+               actualizada_en = CURRENT_TIMESTAMP
+           WHERE id = $1 AND empresa_id = $2 AND estado = 'pendiente'`,
+          [stop.id, user.empresa_id]
+        );
       }
 
       await db.query(
@@ -376,6 +420,23 @@ io.on('connection', (socket) => {
       );
 
       const order = result.rows[0];
+      if (order.estado_anterior === 'asignado') {
+        try {
+          const notification = await createNotification({
+            empresaId: user.empresa_id,
+            userId: order.cliente_id,
+            type: 'repartidor_en_camino',
+            title: 'Tu repartidor va en camino',
+            message: `El pedido #${orderId} salió para entrega.`,
+            orderId,
+            routeId: stop?.ruta_id || null,
+            eventKey: `order-on-way-${orderId}`
+          });
+          emitNotifications(io, [notification]);
+        } catch (notificationError) {
+          logger.error('location_notification_failed', { error: notificationError, orderId });
+        }
+      }
       const locationPayload = {
         repartidorId: user.id,
         latitud: latitude,
@@ -390,6 +451,12 @@ io.on('connection', (socket) => {
         pedidoId: orderId,
         estado: order.estado
       });
+      if (stop?.ruta_id) {
+        io.to(`empresa:${user.empresa_id}`).emit('ruta_actualizada', {
+          rutaId: stop.ruta_id,
+          paradaId: stop.id
+        });
+      }
       return acknowledge({ ok: true });
     } catch (error) {
       logger.error('driver_location_failed', { error, userId: user.id, orderId });

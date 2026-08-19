@@ -70,6 +70,16 @@
         .modal-content { width:min(560px, 100%); max-height:92vh; overflow:auto; background:white; border-radius:8px; padding:20px; }
         #firmaCanvas { width:100%; height:180px; border:1px solid #aeb8c5; border-radius:6px; touch-action:none; background:white; }
         .vehicle-stock { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+        .driver-route-header { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+        .driver-route-progress { height:7px; background:#e5e7eb; border-radius:4px; overflow:hidden; margin:12px 0; }
+        .driver-route-progress span { display:block; height:100%; background:#0f8aa5; }
+        .driver-stop { display:grid; grid-template-columns:32px 1fr; gap:10px; padding:14px 0; border-top:1px solid #e5e7eb; }
+        .driver-stop-number { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background:#e0f2fe; color:#075985; font-weight:700; }
+        .driver-stop.active .driver-stop-number { background:#087ca7; color:white; }
+        .driver-stop small { color:#667085; line-height:1.5; display:block; margin-top:3px; }
+        .driver-stop-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+        .driver-stop-actions button { width:auto; padding:9px 11px; margin:0; border-radius:6px; }
+        .btn-incident { background:#fff4e5; color:#9a3412; border:1px solid #fdba74; }
         @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } .form-field.full { grid-column: auto; } .summary-grid, .vehicle-stock { grid-template-columns: 1fr; } .product-sale-row { grid-template-columns:1fr 68px 68px; } }
     </style>
     <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
@@ -86,6 +96,11 @@
             <div class="card">
                 <h2><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> Hola, <span id="repartidorNombre"></span></h2>
                 <p><span class="estado-conexion conectado" id="estadoLed"></span> <span id="estadoTexto">Conectado</span></p>
+            </div>
+
+            <div class="card">
+                <div class="driver-route-header"><div><h3><i class="fas fa-route"></i> Ruta de hoy</h3><p id="rutaHoyResumen" class="text-muted">Consultando planificación...</p></div><span id="rutaHoyEstado" class="badge badge-pendiente">Sin ruta</span></div>
+                <div id="rutaHoyContenido"></div>
             </div>
 
             <div class="card">
@@ -165,8 +180,17 @@
         <div style="display:flex; gap:10px; margin-top:16px;"><button id="confirmarEntregaButton" class="btn-success" type="button" onclick="confirmarEntregaConComprobante()"><i class="fas fa-check"></i> Confirmar entrega</button><button class="logout-btn" type="button" onclick="cerrarEntregaModal()" style="margin:0;"><i class="fas fa-xmark"></i> Cancelar</button></div>
     </div></div>
 
+    <div id="incidenciaModal" class="modal"><div class="modal-content">
+        <h3><i class="fas fa-triangle-exclamation"></i> Registrar incidencia</h3>
+        <input type="hidden" id="incidenciaParadaId">
+        <div class="form-field" style="margin-top:14px;"><label for="incidenciaCodigo">Motivo</label><select id="incidenciaCodigo"><option value="cliente_ausente">Cliente ausente</option><option value="direccion_incorrecta">Dirección incorrecta</option><option value="sin_respuesta">Cliente sin respuesta</option><option value="pago_pendiente">Pago pendiente</option><option value="acceso_restringido">Acceso restringido</option><option value="otro">Otro</option></select></div>
+        <div class="form-field" style="margin-top:12px;"><label for="incidenciaDetalle">Detalle</label><textarea id="incidenciaDetalle" maxlength="300" rows="3" placeholder="Información útil para administración"></textarea></div>
+        <div class="form-field" style="margin-top:12px;"><label for="incidenciaFecha">Reprogramar para (opcional)</label><input id="incidenciaFecha" type="date"></div>
+        <div style="display:flex; gap:10px; margin-top:16px;"><button id="guardarIncidenciaButton" class="btn-incident" type="button" onclick="guardarIncidencia()"><i class="fas fa-save"></i> Registrar</button><button class="btn-secondary" type="button" onclick="cerrarIncidenciaModal()"><i class="fas fa-xmark"></i> Cancelar</button></div>
+    </div></div>
+
     <script nonce="{{CSP_NONCE}}">
-        let token = null, userId = null, socket = null, map = null, marker = null, seguimientoId = null, intervaloPedidos = null, pedidoActivo = null, catalogoProductos = [], pedidosAsignados = [], miVehiculo = null;
+        let token = null, userId = null, socket = null, map = null, marker = null, markerDestino = null, seguimientoId = null, intervaloPedidos = null, pedidoActivo = null, catalogoProductos = [], pedidosAsignados = [], miRuta = null, miVehiculo = null;
         let driverRefreshTimer = null;
         let empresaModulos = { ventas_ruta: true, logistica: false };
         let firmaActiva = false, firmaTrazada = false;
@@ -176,6 +200,7 @@
             clearTimeout(driverRefreshTimer);
             driverRefreshTimer = setTimeout(() => {
                 cargarPedidos();
+                cargarMiRuta();
                 cargarHistorial();
                 cargarCierresRuta();
                 if (empresaModulos.logistica) cargarVehiculo().then(cargarCatalogoVentas);
@@ -215,9 +240,10 @@
             conectarWebSocket();
             iniciarMapa();
             if (empresaModulos.logistica) await cargarVehiculo();
-            await Promise.all([cargarPedidos(), cargarCatalogoVentas(), cargarHistorial(), cargarCierresRuta()]);
+            await Promise.all([cargarPedidos(), cargarMiRuta(), cargarCatalogoVentas(), cargarHistorial(), cargarCierresRuta()]);
             intervaloPedidos = setInterval(() => { 
                 cargarPedidos(); 
+                cargarMiRuta();
                 cargarHistorial();
                 if (empresaModulos.logistica) cargarVehiculo().then(cargarCatalogoVentas);
             }, 15000);
@@ -240,8 +266,12 @@
                 cargarPedidos(); 
             });
             socket.on('pedido_actualizado', cargarPedidos);
+            socket.on('ruta_actualizada', () => {
+                cargarMiRuta();
+                cargarPedidos();
+            });
             socket.on('operacion_actualizada', (data) => {
-                if (['/api/pedidos', '/api/logistica', '/api/ventas', '/api/productos'].includes(data.recurso)) {
+                if (['/api/pedidos', '/api/logistica', '/api/ventas', '/api/productos', '/api/rutas'].includes(data.recurso)) {
                     refrescarRepartidor();
                 }
             });
@@ -360,6 +390,146 @@
             }
         });
 
+        async function cargarMiRuta() {
+            if (!userId) return;
+            try {
+                const data = await requestJson(`${API}/rutas/mi-ruta`);
+                miRuta = data.ruta;
+                renderMiRuta();
+                const activeStop = miRuta?.paradas?.find(stop => stop.estado === 'en_camino');
+                if (activeStop) pedidoActivo = Number(activeStop.pedido_id);
+                else if (miRuta?.estado === 'en_curso') pedidoActivo = null;
+            } catch (error) {
+                document.getElementById('rutaHoyResumen').textContent = error.message || 'No fue posible cargar la ruta';
+                document.getElementById('rutaHoyContenido').innerHTML = '';
+            }
+        }
+
+        function renderMiRuta() {
+            const summary = document.getElementById('rutaHoyResumen');
+            const statusElement = document.getElementById('rutaHoyEstado');
+            const content = document.getElementById('rutaHoyContenido');
+            if (!miRuta) {
+                summary.textContent = 'Administración todavía no ha asignado una ruta para hoy.';
+                statusElement.className = 'badge badge-pendiente';
+                statusElement.textContent = 'Sin ruta';
+                content.innerHTML = '';
+                return;
+            }
+            const routeStates = {
+                planificada: ['Planificada', 'badge-pendiente'],
+                en_curso: ['En curso', 'badge-camino'],
+                completada: ['Completada', 'badge-entregado'],
+                cancelada: ['Cancelada', 'badge-rechazada']
+            };
+            const stopStates = {
+                pendiente: 'Pendiente', en_camino: 'En camino', entregada: 'Entregada',
+                incidencia: 'Incidencia', cancelada: 'Cancelada'
+            };
+            const status = routeStates[miRuta.estado] || [miRuta.estado, 'badge-pendiente'];
+            statusElement.className = `badge ${status[1]}`;
+            statusElement.textContent = status[0];
+            const completed = miRuta.paradas.filter(stop => ['entregada', 'incidencia', 'cancelada'].includes(stop.estado)).length;
+            const progress = miRuta.paradas.length ? Math.round((completed / miRuta.paradas.length) * 100) : 0;
+            summary.textContent = `${miRuta.nombre} · ${completed} de ${miRuta.paradas.length} paradas atendidas`;
+            content.innerHTML = `
+                <div class="driver-route-progress"><span style="width:${progress}%"></span></div>
+                ${miRuta.estado === 'planificada' ? '<button class="btn-success" type="button" onclick="iniciarRutaHoy()"><i class="fas fa-play"></i> Iniciar ruta</button>' : ''}
+                <div>${miRuta.paradas.map(stop => {
+                    const active = stop.estado === 'en_camino';
+                    const actionable = miRuta.estado === 'en_curso' && ['pendiente', 'en_camino'].includes(stop.estado);
+                    return `<div class="driver-stop ${active ? 'active' : ''}">
+                        <span class="driver-stop-number">${stop.orden}</span>
+                        <div><strong>Pedido #${stop.pedido_id} · ${escapeHtml(stop.cliente_nombre)}</strong><small><i class="fas fa-location-dot"></i> ${escapeHtml(stop.direccion_entrega)}${stop.indicaciones_entrega ? `<br><i class="fas fa-circle-info"></i> ${escapeHtml(stop.indicaciones_entrega)}` : ''}<br>${stopStates[stop.estado] || escapeHtml(stop.estado)}${stop.incidencia_codigo ? ` · ${escapeHtml(stop.incidencia_codigo.replaceAll('_', ' '))}` : ''}${stop.incidencia_detalle ? `<br>${escapeHtml(stop.incidencia_detalle)}` : ''}${stop.fecha_programada && stop.estado === 'incidencia' ? `<br>Reprogramado: ${new Date(`${String(stop.fecha_programada).slice(0, 10)}T12:00:00`).toLocaleDateString('es-EC')}` : ''}</small>
+                        <div class="driver-stop-actions">
+                            ${stop.latitud_entrega !== null ? `<button class="btn-secondary" type="button" onclick="verParadaEnMapa(${stop.id})"><i class="fas fa-map-location-dot"></i> Ver en mapa</button>` : ''}
+                            ${actionable && !active ? `<button class="btn-success" type="button" onclick="activarParada(${stop.id})"><i class="fas fa-truck-fast"></i> Ir a esta entrega</button>` : ''}
+                            ${actionable && active ? `<button class="btn-success" type="button" onclick="entregarPedido(${stop.pedido_id})"><i class="fas fa-file-signature"></i> Confirmar entrega</button>` : ''}
+                            ${actionable && active ? `<button class="btn-incident" type="button" onclick="abrirIncidencia(${stop.id})"><i class="fas fa-triangle-exclamation"></i> Incidencia</button>` : ''}
+                        </div></div>
+                    </div>`;
+                }).join('')}</div>`;
+        }
+
+        async function iniciarRutaHoy() {
+            if (!miRuta) return;
+            try {
+                await requestJson(`${API}/rutas/${miRuta.id}/iniciar`, { method: 'POST' });
+                mostrarToast('Ruta iniciada. Selecciona la primera parada.', 'success');
+                await cargarMiRuta();
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible iniciar la ruta', 'error');
+            }
+        }
+
+        async function activarParada(stopId) {
+            try {
+                const data = await requestJson(`${API}/rutas/paradas/${stopId}/en-camino`, { method: 'POST' });
+                pedidoActivo = Number(data.pedido_id);
+                mostrarToast(`Pedido #${data.pedido_id} establecido como siguiente entrega`, 'success');
+                await Promise.all([cargarMiRuta(), cargarPedidos()]);
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible activar la parada', 'error');
+            }
+        }
+
+        function verParadaEnMapa(stopId) {
+            const stop = miRuta?.paradas?.find(item => Number(item.id) === Number(stopId));
+            const latitude = Number(stop?.latitud_entrega);
+            const longitude = Number(stop?.longitud_entrega);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !map) {
+                mostrarToast('Esta parada no tiene coordenadas guardadas', 'error');
+                return;
+            }
+            if (markerDestino) markerDestino.setLatLng([latitude, longitude]);
+            else markerDestino = L.marker([latitude, longitude]).addTo(map);
+            markerDestino.bindPopup(`Pedido #${stop.pedido_id}: ${escapeHtml(stop.direccion_entrega)}`).openPopup();
+            map.setView([latitude, longitude], 16);
+            setTimeout(() => map.invalidateSize(), 0);
+        }
+
+        function abrirIncidencia(stopId) {
+            document.getElementById('incidenciaParadaId').value = stopId;
+            document.getElementById('incidenciaCodigo').value = 'cliente_ausente';
+            document.getElementById('incidenciaDetalle').value = '';
+            const dateInput = document.getElementById('incidenciaFecha');
+            const localDate = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).format(new Date());
+            const tomorrow = new Date(`${localDate}T12:00:00`);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            dateInput.min = tomorrow.toISOString().slice(0, 10);
+            dateInput.value = '';
+            document.getElementById('incidenciaModal').style.display = 'flex';
+        }
+
+        function cerrarIncidenciaModal() {
+            document.getElementById('incidenciaModal').style.display = 'none';
+        }
+
+        async function guardarIncidencia() {
+            const stopId = Number(document.getElementById('incidenciaParadaId').value);
+            const button = document.getElementById('guardarIncidenciaButton');
+            button.disabled = true;
+            try {
+                await requestJson(`${API}/rutas/paradas/${stopId}/incidencia`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        codigo: document.getElementById('incidenciaCodigo').value,
+                        detalle: document.getElementById('incidenciaDetalle').value.trim(),
+                        reprogramar_para: document.getElementById('incidenciaFecha').value || null
+                    })
+                });
+                cerrarIncidenciaModal();
+                mostrarToast('Incidencia registrada para administración', 'success');
+                await Promise.all([cargarMiRuta(), cargarPedidos(), cargarHistorial()]);
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible registrar la incidencia', 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         async function cargarPedidos() {
             if (!userId) return;
             try {
@@ -388,9 +558,13 @@
                         ${p.estado !== 'entregado' ? `<button class="btn-success" style="margin-top:12px; padding:10px;" onclick="entregarPedido(${p.id})"><i class="fas fa-file-signature"></i> Confirmar entrega</button>` : '<span style="color:#2ecc71;"><i class="fas fa-check-circle"></i> Entregado</span>'}
                     </div>
                 `).join('');
-                const activo = pedidos.find(p => p.estado !== 'entregado');
-                if (activo) pedidoActivo = activo.id;
-                else pedidoActivo = null;
+                const routeActive = miRuta?.paradas?.find(stop => stop.estado === 'en_camino');
+                const activo = routeActive
+                    ? pedidos.find(p => Number(p.id) === Number(routeActive.pedido_id))
+                    : miRuta?.estado === 'en_curso'
+                        ? null
+                        : pedidos.find(p => p.estado === 'en_camino') || pedidos.find(p => p.estado !== 'entregado');
+                pedidoActivo = activo ? activo.id : null;
             } catch (error) { 
                 console.error(error);
                 document.getElementById('pedidosLista').innerHTML = '<p style="color:#e74c3c;"><i class="fas fa-exclamation-triangle"></i> Error cargando pedidos</p>'; 
@@ -525,6 +699,7 @@
                 }
                 mostrarToast('Pedido entregado correctamente', 'success');
                 cargarPedidos();
+                cargarMiRuta();
                 cargarHistorial();
                 if (pedidoActivo === pedidoId) pedidoActivo = null;
                 detenerSeguimiento();
@@ -617,7 +792,7 @@
                 });
                 cerrarEntregaModal();
                 mostrarToast(`Pedido entregado. Total $${Number(delivery.total).toFixed(2)}`, 'success');
-                await Promise.all([cargarPedidos(), cargarHistorial()]);
+                await Promise.all([cargarPedidos(), cargarMiRuta(), cargarHistorial()]);
                 if (pedidoActivo === orderId) pedidoActivo = null;
                 detenerSeguimiento();
             } catch (error) {
