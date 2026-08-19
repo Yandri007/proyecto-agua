@@ -224,7 +224,14 @@ const run = async () => {
       })
     }, adminCookie);
     assert.equal(result.response.status, 201, JSON.stringify(result.data));
+    assert.equal(typeof result.data.email_sent, 'boolean');
     driverId = result.data.id;
+
+    result = await request(`/api/auth/repartidores/${driverId}/resend-verification`, {
+      method: 'POST'
+    }, adminCookie);
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    assert.equal(typeof result.data.email_sent, 'boolean');
     await verifyEmail(result.data.development_url);
 
     result = await request('/api/logistica/vehiculos', {
@@ -241,6 +248,11 @@ const run = async () => {
     assert.equal(result.response.status, 200);
 
     const secondary = await createCompany(secondarySlug, 'secundaria');
+    result = await request(`/api/auth/repartidores/${driverId}/resend-verification`, {
+      method: 'POST'
+    }, secondary.cookie);
+    assert.equal(result.response.status, 404);
+
     result = await request(`/api/productos/${product.id}`, {}, secondary.cookie);
     assert.equal(result.response.status, 404);
 

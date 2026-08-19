@@ -94,8 +94,8 @@ const sendVerificationEmail = async ({ user, token }) => {
   const result = await sendEmail({
     to: user.email,
     subject: 'Verifica tu correo en AquaControl',
-    text: `Hola ${user.nombre}. Verifica tu correo abriendo este enlace: ${verificationUrl}`,
-    html: `<p>Hola ${safeName},</p><p>Verifica tu correo para activar tu cuenta de AquaControl.</p><p><a href="${verificationUrl}">Verificar correo</a></p><p>El enlace vence en 24 horas.</p>`,
+    text: `Hola ${user.nombre}. Verifica tu correo abriendo este enlace: ${verificationUrl}. Despues inicia sesion en ${env.appUrl} con tu correo y la contrasena registrada.`,
+    html: `<p>Hola ${safeName},</p><p>Verifica tu correo para activar tu cuenta de AquaControl.</p><p><a href="${verificationUrl}">Verificar correo</a></p><p>Después inicia sesión en <a href="${env.appUrl}">${env.appUrl}</a> con tu correo y la contraseña registrada.</p><p>El enlace vence en 24 horas.</p>`,
     idempotencyKey: `verify-email-${user.id}-${token.slice(0, 12)}`
   });
   return { ...result, developmentUrl: env.nodeEnv === 'development' ? verificationUrl : undefined };

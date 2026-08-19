@@ -290,7 +290,7 @@
                 <div class="filters-bar">
                     <button class="btn-export" onclick="mostrarModalRepartidor()"><i class="fas fa-plus"></i> Nuevo Repartidor</button>
                 </div>
-                <div class="data-table"><table><thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Pedidos</th><th>Acciones</th></tr></thead><tbody id="tablaRepartidoresBody"></tbody></table></div>
+                <div class="data-table"><table><thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Acceso</th><th>Pedidos</th><th>Acciones</th></tr></thead><tbody id="tablaRepartidoresBody"></tbody></table></div>
             </div>
 
             <div id="tab-recurrentes" class="tab">
@@ -714,7 +714,7 @@
                 const tbody = document.getElementById('tablaRepartidoresBody');
                 if (tbody) {
                     if (repartidores.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hay repartidores registrados</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay repartidores registrados</td></tr>';
                     } else {
                         tbody.innerHTML = repartidores.map(r => `
                             <tr>
@@ -722,8 +722,9 @@
                                 <td>${escapeHtml(r.nombre)}</td>
                                 <td>${escapeHtml(r.email)}</td>
                                 <td>${escapeHtml(r.telefono || '-')}</td>
+                                <td><span class="badge ${r.email_verificado_en ? 'badge-entregado' : 'badge-pendiente'}">${r.email_verificado_en ? 'Verificado' : 'Pendiente'}</span></td>
                                 <td>${pedidos ? pedidos.filter(p => p.repartidor_id === r.id && p.estado === 'entregado').length : 0}</td>
-                                <td><button class="btn-danger" style="padding:5px 10px;" onclick="eliminarRepartidor(${r.id})"><i class="fas fa-trash"></i></button></td>
+                                <td>${r.email_verificado_en ? '' : `<button class="btn-filter" style="padding:5px 10px;" onclick="reenviarAccesoRepartidor(${r.id})" title="Reenviar acceso"><i class="fas fa-envelope"></i></button>`}<button class="btn-danger" style="padding:5px 10px;" onclick="eliminarRepartidor(${r.id})" title="Desactivar repartidor"><i class="fas fa-trash"></i></button></td>
                             </tr>
                         `).join('');
                     }
@@ -1411,7 +1412,8 @@
             });
             const responseData = await res.json();
             if (res.ok) {
-                mostrarToast('Repartidor registrado'); 
+                mostrarToast(responseData.message || 'Repartidor registrado', responseData.email_sent ? 'success' : 'error');
+                if (responseData.development_url) prompt('Enlace local de verificación', responseData.development_url);
                 cerrarModal('repartidorModal'); 
                 cargarRepartidores();
                 document.getElementById('repNombre').value = '';
@@ -1420,6 +1422,18 @@
                 document.getElementById('repTelefono').value = '';
             } else {
                 mostrarToast(responseData.error || 'Error al registrar repartidor', 'error');
+            }
+        }
+
+        async function reenviarAccesoRepartidor(id) {
+            try {
+                const response = await requestJson(`${API}/auth/repartidores/${id}/resend-verification`, {
+                    method: 'POST'
+                });
+                mostrarToast(response.message, response.email_sent ? 'success' : 'error');
+                if (response.development_url) prompt('Enlace local de verificación', response.development_url);
+            } catch (error) {
+                mostrarToast(error.message, 'error');
             }
         }
         

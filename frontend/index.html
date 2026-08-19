@@ -472,7 +472,7 @@
                 body: JSON.stringify({ email })
             });
             const data = await res.json();
-            container.textContent = data.message || 'Solicitud procesada.';
+            container.textContent = data.message || 'Solicitud procesada. Si no llega, solicita al administrador que revise el envío.';
             mostrarEnlaceDesarrollo(container, data.development_url, 'Verificar ahora en modo local');
         }
 

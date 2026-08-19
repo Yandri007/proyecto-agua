@@ -416,7 +416,7 @@ router.post(
       logger.error('verification_resend_failed', { error });
     }
     return res.json({
-      message: 'Si la cuenta está pendiente, recibirás un nuevo enlace.',
+      message: 'Si la cuenta está pendiente y el correo está disponible, recibirás un nuevo enlace.',
       development_url: developmentUrl
     });
   }
@@ -770,6 +770,69 @@ router.get('/repartidores', verifyToken, checkRole(['admin']), async (req, res) 
 });
 
 router.post(
+  '/repartidores/:id/resend-verification',
+  verifyToken,
+  checkRole(['admin']),
+  accountRecoveryLimiter,
+  param('id').isInt({ min: 1 }).withMessage('Repartidor invalido'),
+  handleValidation,
+  async (req, res) => {
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+      const result = await client.query(
+        `SELECT id, nombre, email, email_verificado_en
+         FROM usuarios
+         WHERE id = $1 AND empresa_id = $2
+           AND rol = 'repartidor' AND estado = 'activo'`,
+        [Number(req.params.id), req.user.empresa_id]
+      );
+      const user = result.rows[0];
+      if (!user) {
+        return res.status(404).json({ error: 'Repartidor no encontrado' });
+      }
+      if (user.email_verificado_en) {
+        return res.status(409).json({ error: 'El repartidor ya verifico su correo' });
+      }
+
+      await client.query('BEGIN');
+      transactionStarted = true;
+      const token = await createUserToken(client, user.id, 'verificacion_email', 24 * 60);
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      const emailResult = await deliverVerification(user, token);
+      await writeAudit({
+        req,
+        user: req.user,
+        empresaId: req.user.empresa_id,
+        action: 'repartidor.verificacion_reenviada',
+        entity: 'usuarios',
+        entityId: user.id,
+        details: { entregado_proveedor: emailResult.delivered }
+      });
+      return res.json({
+        message: emailResult.delivered
+          ? 'Enlace de acceso enviado al repartidor.'
+          : 'No se pudo enviar el correo. Revisa la configuracion del proveedor.',
+        email_sent: emailResult.delivered,
+        development_url: emailResult.developmentUrl
+      });
+    } catch (error) {
+      if (transactionStarted) await client.query('ROLLBACK');
+      logger.error('driver_verification_resend_failed', {
+        error,
+        companyId: req.user.empresa_id,
+        driverId: req.params.id
+      });
+      return res.status(500).json({ error: 'No fue posible generar un nuevo enlace' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+router.post(
   '/repartidores',
   verifyToken,
   checkRole(['admin']),
@@ -816,6 +879,10 @@ router.post(
       return res.status(201).json({
         ...user,
         email_verificado_en: null,
+        email_sent: emailResult.delivered,
+        message: emailResult.delivered
+          ? 'Repartidor creado. Enlace de acceso enviado.'
+          : 'Repartidor creado, pero el correo no pudo enviarse.',
         development_url: emailResult.developmentUrl
       });
     } catch (error) {
