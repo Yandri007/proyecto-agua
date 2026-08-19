@@ -39,7 +39,7 @@ Render. Por esa razon:
 2. Desactivar `Enable Data API` para este proyecto.
 3. Abrir `Database > Advisors > Security` y volver a ejecutar el analisis.
 
-En cada arranque, AquaControl tambien activa RLS en sus 24 tablas y revoca los
+En cada arranque, AquaControl tambien activa RLS en sus 25 tablas y revoca los
 privilegios de `anon`, `authenticated` y `service_role`. No crea politicas
 publicas. Los objetos que se creen posteriormente con la conexion del backend
 heredan privilegios cerrados por defecto.
@@ -51,7 +51,7 @@ cd backend
 npm run audit:db-security
 ```
 
-El comando debe informar `24 tablas con RLS y sin acceso Data API publico`.
+El comando debe informar `25 tablas con RLS y sin acceso Data API publico`.
 
 No se deben copiar estas URLs al repositorio, archivos Markdown, capturas ni
 mensajes. Render las almacena como secretos.

@@ -31,7 +31,9 @@ router.use(requireActiveSubscription);
 router.post('/', checkRole(['cliente']), async (req, res) => {
   const {
     productos,
+    direccion_id: addressIdValue,
     direccion_entrega,
+    indicaciones_entrega,
     latitud_entrega,
     longitud_entrega,
     metodo_pago: paymentMethod = 'efectivo'
@@ -40,19 +42,49 @@ router.post('/', checkRole(['cliente']), async (req, res) => {
   if (!Array.isArray(productos) || productos.length === 0 || productos.length > 50) {
     return res.status(400).json({ error: 'El pedido debe incluir entre 1 y 50 productos' });
   }
-  if (!isSafeText(direccion_entrega, 3, 300)) {
+  const addressId = addressIdValue === null || addressIdValue === undefined || addressIdValue === ''
+    ? null
+    : Number(addressIdValue);
+  if (addressId !== null && !isPositiveId(addressId)) {
+    return res.status(400).json({ error: 'Dirección guardada inválida' });
+  }
+
+  let deliveryAddress = direccion_entrega;
+  let deliveryInstructions = indicaciones_entrega || null;
+  let latitudeValue = latitud_entrega;
+  let longitudeValue = longitud_entrega;
+  if (addressId !== null) {
+    const savedAddress = await pool.query(
+      `SELECT direccion, indicaciones, latitud, longitud
+       FROM direcciones_clientes
+       WHERE id = $1 AND empresa_id = $2 AND cliente_id = $3`,
+      [addressId, req.user.empresa_id, req.user.id]
+    );
+    if (!savedAddress.rowCount) {
+      return res.status(404).json({ error: 'La dirección guardada ya no está disponible' });
+    }
+    deliveryAddress = savedAddress.rows[0].direccion;
+    deliveryInstructions = savedAddress.rows[0].indicaciones;
+    latitudeValue = savedAddress.rows[0].latitud;
+    longitudeValue = savedAddress.rows[0].longitud;
+  }
+
+  if (!isSafeText(deliveryAddress, 3, 300)) {
     return res.status(400).json({ error: 'Dirección de entrega inválida' });
+  }
+  if (deliveryInstructions && !isSafeText(deliveryInstructions, 1, 300)) {
+    return res.status(400).json({ error: 'Indicaciones de entrega inválidas' });
   }
   if (!ORDER_PAYMENT_METHODS.has(paymentMethod)) {
     return res.status(400).json({ error: 'Método de pago inválido' });
   }
 
-  const hasCoordinates = latitud_entrega !== null
-    && latitud_entrega !== undefined
-    && longitud_entrega !== null
-    && longitud_entrega !== undefined;
-  const latitude = hasCoordinates ? Number(latitud_entrega) : null;
-  const longitude = hasCoordinates ? Number(longitud_entrega) : null;
+  const hasCoordinates = latitudeValue !== null
+    && latitudeValue !== undefined
+    && longitudeValue !== null
+    && longitudeValue !== undefined;
+  const latitude = hasCoordinates ? Number(latitudeValue) : null;
+  const longitude = hasCoordinates ? Number(longitudeValue) : null;
   if (hasCoordinates && (
     !Number.isFinite(latitude) || latitude < -90 || latitude > 90
     || !Number.isFinite(longitude) || longitude < -180 || longitude > 180
@@ -123,15 +155,18 @@ router.post('/', checkRole(['cliente']), async (req, res) => {
     const orderResult = await client.query(
       `INSERT INTO pedidos
         (empresa_id, cliente_id, total, subtotal_productos, deposito_envases,
-         metodo_pago, direccion_entrega, latitud_entrega, longitud_entrega, estado)
-       VALUES ($1, $2, $3, $3, 0, $4, $5, $6, $7, 'pendiente')
+         metodo_pago, direccion_entrega, direccion_cliente_id, indicaciones_entrega,
+         latitud_entrega, longitud_entrega, estado)
+       VALUES ($1, $2, $3, $3, 0, $4, $5, $6, $7, $8, $9, 'pendiente')
        RETURNING *`,
       [
         req.user.empresa_id,
         req.user.id,
         total,
         paymentMethod,
-        direccion_entrega.trim(),
+        deliveryAddress.trim(),
+        addressId,
+        deliveryInstructions?.trim() || null,
         latitude,
         longitude
       ]

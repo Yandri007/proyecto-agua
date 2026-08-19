@@ -595,7 +595,7 @@
                 const nextState = client.estado === 'activo' ? 'inactivo' : 'activo';
                 const actionLabel = nextState === 'activo' ? 'Activar' : 'Suspender';
                 return `<tr>
-                    <td><strong>${escapeHtml(client.nombre)}</strong><div class="table-detail">${escapeHtml(client.direccion || 'Sin dirección guardada')}</div></td>
+                    <td><strong>${escapeHtml(client.nombre)}</strong><div class="table-detail">${escapeHtml(client.direccion || 'Sin dirección guardada')} · ${Number(client.direcciones_total || 0)} ubicación${Number(client.direcciones_total || 0) === 1 ? '' : 'es'}</div></td>
                     <td>${escapeHtml(client.email)}<div class="table-detail">${escapeHtml(client.telefono || 'Sin teléfono')}</div></td>
                     <td><span class="badge ${accessClass}">${escapeHtml(client.estado === 'activo' ? accessLabel : 'Suspendido')}</span></td>
                     <td><strong>${Number(client.pedidos_total || 0)}</strong><div class="table-detail">$${Number(client.total_pedidos || 0).toFixed(2)}</div></td>
@@ -1001,7 +1001,7 @@
                 tbody.innerHTML = filtrados.map(p => `
                     <tr>
                         <td>${p.id}</td>
-                        <td>${escapeHtml(p.cliente_nombre || p.cliente_id)}</td>
+                        <td><strong>${escapeHtml(p.cliente_nombre || p.cliente_id)}</strong><div class="table-detail"><i class="fas fa-location-dot"></i> ${escapeHtml(p.direccion_entrega || 'Sin dirección')}${p.indicaciones_entrega ? `<br>${escapeHtml(p.indicaciones_entrega)}` : ''}</div></td>
                         <td>$${p.total}</td>
                         <td><span class="badge badge-${escapeHtml(p.estado)}">${escapeHtml(p.estado)}</span></td>
                         <td>${escapeHtml(repartidores.find(r => r.id === p.repartidor_id)?.nombre || '-')}</td>

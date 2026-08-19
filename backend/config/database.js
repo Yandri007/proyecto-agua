@@ -157,6 +157,26 @@ const initializeDatabase = async () => {
     );
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS direcciones_clientes (
+        id BIGSERIAL PRIMARY KEY,
+        empresa_id INT NOT NULL REFERENCES empresas(id),
+        cliente_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        etiqueta VARCHAR(40) NOT NULL,
+        direccion VARCHAR(300) NOT NULL,
+        indicaciones VARCHAR(300),
+        latitud DECIMAL(10,8),
+        longitud DECIMAL(11,8),
+        es_predeterminada BOOLEAN NOT NULL DEFAULT FALSE,
+        creado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        actualizado_en TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS direcciones_cliente_predeterminada_uniq
+      ON direcciones_clientes (cliente_id) WHERE es_predeterminada = TRUE`);
+    await client.query(`CREATE INDEX IF NOT EXISTS direcciones_cliente_lista_idx
+      ON direcciones_clientes (empresa_id, cliente_id, creado_en)`);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS productos (
         id SERIAL PRIMARY KEY,
         empresa_id INT,
@@ -194,6 +214,8 @@ const initializeDatabase = async () => {
         deposito_envases DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (deposito_envases >= 0),
         metodo_pago VARCHAR(30) NOT NULL DEFAULT 'efectivo',
         direccion_entrega TEXT NOT NULL,
+        direccion_cliente_id BIGINT REFERENCES direcciones_clientes(id) ON DELETE SET NULL,
+        indicaciones_entrega VARCHAR(300),
         latitud_entrega DECIMAL(10,8),
         longitud_entrega DECIMAL(11,8),
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -211,6 +233,8 @@ const initializeDatabase = async () => {
     await client.query('ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS subtotal_productos DECIMAL(10,2) NOT NULL DEFAULT 0');
     await client.query('ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS deposito_envases DECIMAL(10,2) NOT NULL DEFAULT 0');
     await client.query("ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR(30) NOT NULL DEFAULT 'efectivo'");
+    await client.query('ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS direccion_cliente_id BIGINT REFERENCES direcciones_clientes(id) ON DELETE SET NULL');
+    await client.query('ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS indicaciones_entrega VARCHAR(300)');
     await client.query('UPDATE pedidos SET subtotal_productos = total WHERE subtotal_productos = 0 AND total > 0');
     await client.query(
       `UPDATE pedidos p

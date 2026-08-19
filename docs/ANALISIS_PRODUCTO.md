@@ -1,6 +1,6 @@
 # Análisis de AquaControl frente a operaciones reales
 
-Fecha de revisión: 1 de agosto de 2026.
+Fecha de revisión: 19 de agosto de 2026.
 
 ## Qué hacen las embotelladoras grandes
 
@@ -65,13 +65,17 @@ Fortalezas actuales:
 - Flota e inventario por vehículo para separar la bodega de la venta directa.
 - Envases retornables, depósitos, comprobante firmado y cierre de caja por ruta.
 - Pedidos permanentes semanales, quincenales o mensuales con pausa, omisión y reanudación.
+- Varias direcciones por cliente, lugar principal, instrucciones de acceso y
+  coordenadas opcionales reutilizables sin solicitar GPS en cada compra.
 
 Brechas prioritarias:
 
 | Prioridad | Capacidad | Razón |
 | --- | --- | --- |
 | Alta | Rutas, paradas y secuenciación | Reduce kilómetros, tiempo y entregas fallidas. |
+| Alta | Avisos de llegada, incidencias y soporte | Evita llamadas dispersas y mantiene informado al cliente. |
 | Media | Cuentas por cobrar y factura electrónica | Convierte ventas aprobadas en contabilidad real. |
+| Media | Tarifas por cliente y zona | Permite atender hogares, oficinas y mayoristas sin duplicar productos. |
 | Media | Compras, proveedores y múltiples bodegas | Necesario cuando una distribuidora escala. |
 | Media | Mantenimiento de vehículos y equipos | Controla disponibilidad y costo operativo. |
 | Posterior | Nómina, vacaciones y beneficios completos | Debe integrarse con un sistema laboral/contable local, no improvisarse. |
@@ -110,3 +114,17 @@ cliente puede cambiar frecuencia, cantidades, fecha y dirección; también puede
 pausar, reanudar, omitir la siguiente visita o cancelar. Cada ejecución queda
 registrada y los fallos de stock o límites del plan son visibles para cliente y
 administrador.
+
+## Siguiente secuencia recomendada
+
+1. Convertir las coordenadas de las direcciones guardadas en paradas diarias y
+   permitir que el administrador ordene y asigne la ruta.
+2. Incorporar estados de incidencia (`cliente ausente`, `dirección incorrecta`,
+   `reprogramado`) y avisos de salida o llegada.
+3. Añadir saldos por cliente, pagos parciales y exportación contable antes de
+   integrar facturación electrónica ecuatoriana.
+4. Implementar listas de precio por cliente o zona y ventanas de entrega.
+
+No conviene incorporar todas estas capacidades a la vez durante el piloto. La
+libreta de direcciones ya implementada permite medir calidad de datos y entregas
+fallidas; esos datos deben orientar el diseño del optimizador de rutas.

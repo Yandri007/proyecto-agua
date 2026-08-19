@@ -76,6 +76,22 @@
         .schedule-field { display:flex; flex-direction:column; gap:5px; text-align:left; margin:10px 0; }
         .schedule-field label { font-size:12px; font-weight:600; color:#475467; }
         .schedule-field input, .schedule-field select { padding:11px; border:1px solid #cfd8e3; border-radius:6px; font:inherit; }
+        .address-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:7px; }
+        .address-heading label { font-size:13px; font-weight:600; }
+        .address-heading button { border:0; background:none; color:#087ca7; cursor:pointer; font-weight:600; padding:5px; }
+        .address-control { width:100%; padding:11px; border:1px solid #d9e2ec; border-radius:7px; margin-bottom:9px; font:inherit; }
+        textarea.address-control { min-height:68px; resize:vertical; }
+        .saved-address-list { display:flex; flex-direction:column; gap:8px; margin:14px 0; }
+        .saved-address { border:1px solid #d9e2ec; border-radius:7px; padding:11px; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; }
+        .saved-address strong { display:block; margin-bottom:3px; }
+        .saved-address small { color:#667085; line-height:1.4; }
+        .saved-address-actions { display:flex; gap:5px; }
+        .saved-address-actions button, .location-button { width:38px; height:38px; border:1px solid #cfd8e3; border-radius:6px; background:white; color:#087ca7; cursor:pointer; }
+        .location-row { display:flex; align-items:center; gap:9px; margin:8px 0; }
+        .location-button { width:auto; padding:0 11px; }
+        .location-status { color:#667085; font-size:12px; }
+        .address-default { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 0; }
+        .address-default input { width:18px; height:18px; accent-color:#087ca7; }
         @media (max-width:760px) { .main-grid { grid-template-columns:1fr; } .programacion-item { grid-template-columns:1fr; } .programacion-actions { justify-content:flex-start; } }
     </style>
     <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
@@ -95,8 +111,10 @@
             <div>
                 <div class="carrito-card">
                     <h3><i class="fas fa-basket-shopping"></i> Tu pedido</h3>
-                    <label for="direccionEntrega" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Dirección de entrega</label>
-                    <input id="direccionEntrega" type="text" maxlength="300" placeholder="Calle, número y referencia" style="width:100%; padding:12px; border:1px solid #d9e2ec; border-radius:10px; margin-bottom:14px;">
+                    <div class="address-heading"><label for="direccionGuardada">Lugar de entrega</label><button type="button" onclick="abrirGestorDirecciones()"><i class="fas fa-location-dot"></i> Mis direcciones</button></div>
+                    <select id="direccionGuardada" class="address-control" onchange="seleccionarDireccion()"><option value="">Nueva dirección</option></select>
+                    <input id="direccionEntrega" class="address-control" type="text" maxlength="300" placeholder="Calle, número y referencia" aria-label="Dirección de entrega">
+                    <textarea id="indicacionesEntrega" class="address-control" maxlength="300" placeholder="Indicaciones para encontrar el lugar" aria-label="Indicaciones de entrega"></textarea>
                     <label for="pedidoMetodoPago" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Método de pago</label>
                     <select id="pedidoMetodoPago" style="width:100%; padding:12px; border:1px solid #d9e2ec; border-radius:10px; margin-bottom:14px;"><option value="efectivo">Efectivo al recibir</option><option value="transferencia">Transferencia</option></select>
                     <div id="carrito">Carrito vacío</div>
@@ -161,6 +179,22 @@
         <button class="modal-btn-cancel" onclick="document.getElementById('modalComprobante').style.display='none'">Cerrar</button>
     </div></div>
 
+    <div id="modalDirecciones" class="modal"><div class="modal-content" style="max-width:560px; text-align:left; max-height:92vh; overflow:auto;">
+        <div class="address-heading"><h3><i class="fas fa-map-location-dot"></i> Mis direcciones</h3><button type="button" onclick="nuevaDireccion()"><i class="fas fa-plus"></i> Nueva</button></div>
+        <div id="direccionesGuardadasLista" class="saved-address-list"></div>
+        <form id="direccionForm" onsubmit="guardarDireccion(event)">
+            <input id="direccionId" type="hidden">
+            <input id="direccionLatitud" type="hidden">
+            <input id="direccionLongitud" type="hidden">
+            <div class="schedule-field"><label for="direccionEtiqueta">Nombre del lugar</label><input id="direccionEtiqueta" maxlength="40" placeholder="Casa u Oficina" required></div>
+            <div class="schedule-field"><label for="direccionTexto">Dirección</label><input id="direccionTexto" maxlength="300" required></div>
+            <div class="schedule-field"><label for="direccionIndicaciones">Indicaciones de entrega</label><input id="direccionIndicaciones" maxlength="300" placeholder="Portón, piso o referencia"></div>
+            <div class="location-row"><button class="location-button" type="button" onclick="capturarUbicacionDireccion()"><i class="fas fa-crosshairs"></i> Usar mi ubicación actual</button><span id="direccionUbicacionEstado" class="location-status">Sin ubicación guardada</span></div>
+            <label class="address-default"><span><strong>Usar como predeterminada</strong></span><input id="direccionPredeterminada" type="checkbox"></label>
+            <div class="modal-buttons"><button id="guardarDireccionButton" class="modal-btn-confirm" style="background:#087ca7;" type="submit"><i class="fas fa-save"></i> Guardar</button><button class="modal-btn-cancel" type="button" onclick="cerrarGestorDirecciones()">Cerrar</button></div>
+        </form>
+    </div></div>
+
     <div id="modalProgramacion" class="modal"><div class="modal-content" style="max-width:540px; text-align:left; max-height:92vh; overflow:auto;">
         <h3><i class="fas fa-calendar-plus"></i> <span id="programacionTitulo">Nueva entrega programada</span></h3>
         <input type="hidden" id="programacionId">
@@ -175,7 +209,7 @@
 
     <script nonce="{{CSP_NONCE}}">
         const API = '/api';
-        let token = null, userId = null, carrito = [], catalogoProductos = [], programaciones = [], programacionItems = [], socket = null, map = null, markerRepartidor = null, pedidoActivo = null;
+        let token = null, userId = null, carrito = [], catalogoProductos = [], programaciones = [], programacionItems = [], direcciones = [], socket = null, map = null, markerRepartidor = null, pedidoActivo = null;
         let clienteRefreshTimer = null, clienteRefreshInterval = null;
         let pedidoAOcultar = null;
         const productImageByType = Object.freeze({
@@ -217,7 +251,7 @@
             }
             conectarWebSocket();
             await cargarProductos();
-            await Promise.all([cargarMisPedidos(), cargarProgramaciones()]);
+            await Promise.all([cargarDirecciones(), cargarMisPedidos(), cargarProgramaciones()]);
             if (!clienteRefreshInterval) {
                 clienteRefreshInterval = setInterval(refrescarCliente, 30000);
             }
@@ -227,7 +261,7 @@
             if (!token || document.hidden) return;
             clearTimeout(clienteRefreshTimer);
             clienteRefreshTimer = setTimeout(() => {
-                Promise.all([cargarProductos(), cargarMisPedidos(), cargarProgramaciones()]);
+                Promise.all([cargarProductos(), cargarMisPedidos(), cargarProgramaciones(), cargarDirecciones(true)]);
             }, 250);
         }
 
@@ -270,7 +304,7 @@
             });
 
             socket.on('operacion_actualizada', (data) => {
-                if (['/api/pedidos', '/api/productos', '/api/recurrentes'].includes(data.recurso)) {
+                if (['/api/pedidos', '/api/productos', '/api/recurrentes', '/api/direcciones'].includes(data.recurso)) {
                     refrescarCliente();
                 }
             });
@@ -305,6 +339,157 @@
             } 
             map.setView([lat, lng], 14); 
             setTimeout(() => map.invalidateSize(), 0);
+        }
+
+        async function cargarDirecciones(preservarSeleccion = false) {
+            const select = document.getElementById('direccionGuardada');
+            const selectedValue = preservarSeleccion ? select.value : null;
+            const preserveManualAddress = preservarSeleccion && selectedValue === '';
+            const selectedId = selectedValue ? Number(selectedValue) : null;
+            try {
+                direcciones = await AquaUI.requestJson(`${API}/direcciones`);
+                select.innerHTML = '<option value="">Nueva dirección</option>' + direcciones.map(address => `
+                    <option value="${address.id}">${escapeHtml(address.etiqueta)}${address.es_predeterminada ? ' · Predeterminada' : ''}</option>`
+                ).join('');
+                const selectedStillExists = selectedId && direcciones.some(address => Number(address.id) === selectedId);
+                const preferred = preserveManualAddress
+                    ? ''
+                    : selectedStillExists
+                    ? selectedId
+                    : direcciones.find(address => address.es_predeterminada)?.id || '';
+                select.value = String(preferred || '');
+                if (preferred) seleccionarDireccion(false);
+                renderDireccionesGuardadas();
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible cargar tus direcciones', 'error');
+            }
+        }
+
+        function seleccionarDireccion(limpiarManual = true) {
+            const id = Number(document.getElementById('direccionGuardada').value);
+            const address = direcciones.find(item => Number(item.id) === id);
+            const addressInput = document.getElementById('direccionEntrega');
+            const instructionsInput = document.getElementById('indicacionesEntrega');
+            if (address) {
+                addressInput.value = address.direccion;
+                instructionsInput.value = address.indicaciones || '';
+                addressInput.readOnly = true;
+                instructionsInput.readOnly = true;
+                return;
+            }
+            addressInput.readOnly = false;
+            instructionsInput.readOnly = false;
+            if (limpiarManual) {
+                addressInput.value = '';
+                instructionsInput.value = '';
+                addressInput.focus();
+            }
+        }
+
+        function abrirGestorDirecciones() {
+            renderDireccionesGuardadas();
+            if (!direcciones.length) nuevaDireccion();
+            document.getElementById('modalDirecciones').style.display = 'flex';
+        }
+
+        function cerrarGestorDirecciones() {
+            document.getElementById('modalDirecciones').style.display = 'none';
+        }
+
+        function renderDireccionesGuardadas() {
+            const container = document.getElementById('direccionesGuardadasLista');
+            if (!container) return;
+            container.innerHTML = direcciones.length ? direcciones.map(address => `
+                <div class="saved-address">
+                    <div><strong>${escapeHtml(address.etiqueta)} ${address.es_predeterminada ? '<span class="badge badge-entregado">Principal</span>' : ''}</strong><small>${escapeHtml(address.direccion)}${address.indicaciones ? `<br>${escapeHtml(address.indicaciones)}` : ''}${address.latitud !== null ? '<br><i class="fas fa-location-dot"></i> Ubicación guardada' : ''}</small></div>
+                    <div class="saved-address-actions"><button type="button" onclick="editarDireccion(${address.id})" title="Editar dirección" aria-label="Editar ${escapeHtml(address.etiqueta)}"><i class="fas fa-pen"></i></button><button type="button" onclick="eliminarDireccion(${address.id})" title="Eliminar dirección" aria-label="Eliminar ${escapeHtml(address.etiqueta)}"><i class="fas fa-trash"></i></button></div>
+                </div>`).join('') : '<p class="text-muted">Todavía no tienes direcciones guardadas.</p>';
+        }
+
+        function nuevaDireccion() {
+            document.getElementById('direccionForm').reset();
+            document.getElementById('direccionId').value = '';
+            document.getElementById('direccionLatitud').value = '';
+            document.getElementById('direccionLongitud').value = '';
+            document.getElementById('direccionPredeterminada').checked = direcciones.length === 0;
+            document.getElementById('direccionUbicacionEstado').textContent = 'Sin ubicación guardada';
+            document.getElementById('direccionEtiqueta').focus();
+        }
+
+        function editarDireccion(id) {
+            const address = direcciones.find(item => Number(item.id) === Number(id));
+            if (!address) return;
+            document.getElementById('direccionId').value = address.id;
+            document.getElementById('direccionEtiqueta').value = address.etiqueta;
+            document.getElementById('direccionTexto').value = address.direccion;
+            document.getElementById('direccionIndicaciones').value = address.indicaciones || '';
+            document.getElementById('direccionLatitud').value = address.latitud ?? '';
+            document.getElementById('direccionLongitud').value = address.longitud ?? '';
+            document.getElementById('direccionPredeterminada').checked = Boolean(address.es_predeterminada);
+            document.getElementById('direccionUbicacionEstado').textContent = address.latitud !== null
+                ? 'Ubicación guardada'
+                : 'Sin ubicación guardada';
+            document.getElementById('direccionEtiqueta').focus();
+        }
+
+        function capturarUbicacionDireccion() {
+            const status = document.getElementById('direccionUbicacionEstado');
+            if (!navigator.geolocation) {
+                status.textContent = 'Este dispositivo no permite obtener ubicación';
+                return;
+            }
+            status.textContent = 'Obteniendo ubicación...';
+            navigator.geolocation.getCurrentPosition(position => {
+                document.getElementById('direccionLatitud').value = position.coords.latitude;
+                document.getElementById('direccionLongitud').value = position.coords.longitude;
+                status.textContent = `Ubicación guardada · precisión ${Math.round(position.coords.accuracy)} m`;
+            }, () => {
+                status.textContent = 'No fue posible obtener la ubicación';
+            }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
+        }
+
+        async function guardarDireccion(event) {
+            event.preventDefault();
+            const id = document.getElementById('direccionId').value;
+            const latitude = document.getElementById('direccionLatitud').value;
+            const longitude = document.getElementById('direccionLongitud').value;
+            const payload = {
+                etiqueta: document.getElementById('direccionEtiqueta').value.trim(),
+                direccion: document.getElementById('direccionTexto').value.trim(),
+                indicaciones: document.getElementById('direccionIndicaciones').value.trim(),
+                latitud: latitude === '' ? null : Number(latitude),
+                longitud: longitude === '' ? null : Number(longitude),
+                es_predeterminada: document.getElementById('direccionPredeterminada').checked
+            };
+            const button = document.getElementById('guardarDireccionButton');
+            button.disabled = true;
+            try {
+                const saved = await AquaUI.requestJson(id ? `${API}/direcciones/${id}` : `${API}/direcciones`, {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                await cargarDirecciones();
+                document.getElementById('direccionGuardada').value = String(saved.id);
+                seleccionarDireccion(false);
+                cerrarGestorDirecciones();
+                mostrarToast(id ? 'Dirección actualizada' : 'Dirección guardada', 'success');
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible guardar la dirección', 'error');
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function eliminarDireccion(id) {
+            if (!confirm('¿Eliminar esta dirección guardada?')) return;
+            try {
+                await AquaUI.requestJson(`${API}/direcciones/${id}`, { method: 'DELETE' });
+                await cargarDirecciones();
+                mostrarToast('Dirección eliminada', 'success');
+            } catch (error) {
+                mostrarToast(error.message || 'No fue posible eliminar la dirección', 'error');
+            }
         }
 
         async function cargarUbicacionPedido(pedidoId) {
@@ -435,17 +620,21 @@
         }
 
         async function guardarProgramacion() {
+            const selectedAddress = direcciones.find(item => Number(item.id) === Number(document.getElementById('direccionGuardada').value));
             const products = [...document.querySelectorAll('[data-programacion-producto]')].map(input => ({
                 producto_id: Number(input.dataset.programacionProducto), cantidad: Number(input.value)
             }));
             const id = document.getElementById('programacionId').value;
+            const existingSchedule = id
+                ? programaciones.find(item => Number(item.id) === Number(id))
+                : null;
             const body = {
                 frecuencia: document.getElementById('programacionFrecuencia').value,
                 proxima_entrega: document.getElementById('programacionFecha').value,
                 direccion_entrega: document.getElementById('programacionDireccion').value.trim(),
                 metodo_pago: document.getElementById('programacionMetodoPago').value,
-                latitud_entrega: null,
-                longitud_entrega: null,
+                latitud_entrega: existingSchedule?.latitud_entrega ?? selectedAddress?.latitud ?? null,
+                longitud_entrega: existingSchedule?.longitud_entrega ?? selectedAddress?.longitud ?? null,
                 productos: products,
                 ...(!id ? { idempotency_key: document.getElementById('programacionKey').value } : {})
             };
@@ -531,24 +720,18 @@
                 return;
             }
 
-            let lat = null, lng = null;
-            if(navigator.geolocation) {
-                await new Promise(r => navigator.geolocation.getCurrentPosition(p => {
-                    lat = p.coords.latitude; 
-                    lng = p.coords.longitude; 
-                    r();
-                }, () => r(), { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }));
-            }
-            
+            const selectedAddressId = Number(document.getElementById('direccionGuardada').value) || null;
             const pedidoData = {
                 productos: carrito.map(i => ({
                     producto_id: i.producto_id,
                     cantidad: i.cantidad
                 })),
+                direccion_id: selectedAddressId,
                 direccion_entrega: direccion,
+                indicaciones_entrega: document.getElementById('indicacionesEntrega').value.trim(),
                 metodo_pago: document.getElementById('pedidoMetodoPago').value,
-                latitud_entrega: lat,
-                longitud_entrega: lng
+                latitud_entrega: null,
+                longitud_entrega: null
             };
             
             try {
@@ -559,7 +742,10 @@
                 });
                 carrito = [];
                 actualizarCarrito();
-                document.getElementById('direccionEntrega').value = '';
+                if (!selectedAddressId) {
+                    document.getElementById('direccionEntrega').value = '';
+                    document.getElementById('indicacionesEntrega').value = '';
+                }
                 document.getElementById('modalPedido').style.display = 'flex';
                 await cargarMisPedidos();
             } catch (error) {
@@ -661,6 +847,8 @@
                                 <span class="badge ${estadoClass}">${estadoTexto}</span>
                             </div>
                             <div>Total: $${Number(p.total).toFixed(2)} · ${p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo'}</div>
+                            <div class="text-muted"><i class="fas fa-location-dot"></i> ${escapeHtml(p.direccion_entrega)}</div>
+                            ${p.indicaciones_entrega ? `<div class="text-muted">${escapeHtml(p.indicaciones_entrega)}</div>` : ''}
                             ${Number(p.deposito_envases || 0) > 0 ? `<div class="text-muted">Incluye depósito de envases: $${Number(p.deposito_envases).toFixed(2)}</div>` : ''}
                             <div>Fecha: ${new Date(p.created_at).toLocaleString()}</div>
                             ${p.pedido_recurrente_id ? `<div class="text-muted"><i class="fas fa-rotate"></i> Entrega programada para ${new Date(`${String(p.fecha_programada).slice(0,10)}T12:00:00`).toLocaleDateString()}</div>` : ''}
@@ -695,6 +883,16 @@
                         deposito_envase: Number(prod.deposito_unitario || 0),
                         cantidad: Number(prod.cantidad) || 1
                     }));
+                    const savedAddress = direcciones.find(address => Number(address.id) === Number(pedido.direccion_cliente_id));
+                    if (savedAddress) {
+                        document.getElementById('direccionGuardada').value = String(savedAddress.id);
+                        seleccionarDireccion(false);
+                    } else {
+                        document.getElementById('direccionGuardada').value = '';
+                        seleccionarDireccion(false);
+                        document.getElementById('direccionEntrega').value = pedido.direccion_entrega || '';
+                        document.getElementById('indicacionesEntrega').value = pedido.indicaciones_entrega || '';
+                    }
                     actualizarCarrito();
                     mostrarToast('Productos agregados al carrito', 'success');
                 } else {

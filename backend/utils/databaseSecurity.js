@@ -3,6 +3,7 @@ const APP_PUBLIC_TABLES = Object.freeze([
   'administradores_plataforma',
   'auditoria_plataforma',
   'usuarios',
+  'direcciones_clientes',
   'productos',
   'pedidos',
   'detalle_pedidos',

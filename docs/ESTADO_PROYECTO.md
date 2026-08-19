@@ -1,6 +1,6 @@
 # Estado de AquaControl
 
-Última actualización: 12 de agosto de 2026.
+Última actualización: 19 de agosto de 2026.
 
 ## Decisión de producto
 
@@ -22,6 +22,8 @@ funcionalidad.
 - Cookies `HttpOnly`, rate limits e invalidación global de sesiones.
 - Verificación de correo y recuperación de contraseña.
 - Gestión de productos, inventario, pedidos, clientes y repartidores.
+- Libreta privada de direcciones por cliente, ubicación principal,
+  instrucciones para el repartidor y reutilización segura al repetir pedidos.
 - Aislamiento multiempresa en API, PostgreSQL y WebSocket.
 - Dashboard, reportes y exportación.
 - Mapa operativo y GPS en tiempo real.
@@ -100,9 +102,9 @@ El comando rechaza su ejecución en producción.
 
 ## Verificación realizada
 
-- `npm test`: 18 pruebas aprobadas.
+- `npm test`: 22 pruebas aprobadas.
 - `npm run check`: 8 interfaces y 6 scripts verificados.
-- `npm run test:integration`: identidad, recurrencias, módulos, personal, planta,
+- `npm run test:integration`: identidad, direcciones guardadas, recurrencias, módulos, personal, planta,
   flota, ventas, GPS, comprobantes, cierres, stock y sincronización de los cinco
   roles aprobados; incluye dos pedidos consecutivos a direcciones distintas,
   reporte semanal y verificación del nonce CSP.

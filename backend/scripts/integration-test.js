@@ -24,6 +24,7 @@ let closingId;
 let deliveryOrderId;
 let recurringScheduleId;
 let recurringOrderId;
+let savedAddressId;
 let cancelled = false;
 let additionalOrderCancelled = false;
 const liveSockets = [];
@@ -338,6 +339,82 @@ const run = async () => {
     assert.equal(result.response.status, 401);
     clientCookie = (await login(clientEmail, newPassword)).cookie;
 
+    result = await request('/api/direcciones', {
+      method: 'POST',
+      body: JSON.stringify({
+        etiqueta: 'Casa',
+        direccion: 'Urbanización Agua Clara, casa 12',
+        indicaciones: 'Portón azul, llamar al llegar',
+        latitud: -0.180653,
+        longitud: -78.467838,
+        es_predeterminada: true
+      })
+    }, clientCookie);
+    assert.equal(result.response.status, 201);
+    assert.equal(result.data.es_predeterminada, true);
+    savedAddressId = Number(result.data.id);
+
+    result = await request('/api/direcciones', {}, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.length, 1);
+    assert.equal(Number(result.data[0].id), savedAddressId);
+
+    result = await request(`/api/direcciones/${savedAddressId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        etiqueta: 'Casa principal',
+        direccion: 'Urbanización Agua Clara, casa 12',
+        indicaciones: 'Portón azul, llamar al llegar',
+        latitud: -0.180653,
+        longitud: -78.467838,
+        es_predeterminada: true
+      })
+    }, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.etiqueta, 'Casa principal');
+
+    result = await request('/api/direcciones', {
+      method: 'POST',
+      body: JSON.stringify({
+        etiqueta: 'Oficina',
+        direccion: 'Avenida de prueba 456',
+        indicaciones: '',
+        latitud: null,
+        longitud: null,
+        es_predeterminada: false
+      })
+    }, clientCookie);
+    assert.equal(result.response.status, 201);
+    const alternateAddressId = Number(result.data.id);
+
+    result = await request(`/api/direcciones/${alternateAddressId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        etiqueta: 'Oficina',
+        direccion: 'Avenida de prueba 456',
+        indicaciones: '',
+        latitud: null,
+        longitud: null,
+        es_predeterminada: true
+      })
+    }, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.es_predeterminada, true);
+
+    result = await request(`/api/direcciones/${alternateAddressId}`, {
+      method: 'DELETE'
+    }, clientCookie);
+    assert.equal(result.response.status, 200);
+
+    result = await request('/api/direcciones', {}, clientCookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.length, 1);
+    assert.equal(Number(result.data[0].id), savedAddressId);
+    assert.equal(result.data[0].es_predeterminada, true);
+
+    result = await request('/api/direcciones', {}, adminCookie);
+    assert.equal(result.response.status, 403);
+
     const todayEcuador = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Guayaquil', year: 'numeric', month: '2-digit', day: '2-digit'
     }).format(new Date());
@@ -425,13 +502,16 @@ const run = async () => {
       method: 'POST',
       body: JSON.stringify({
         productos: [{ producto_id: product.id, cantidad: 1 }],
-        direccion_entrega: 'Calle de prueba 123',
-        metodo_pago: 'efectivo',
-        latitud_entrega: -0.180653,
-        longitud_entrega: -78.467838
+        direccion_id: savedAddressId,
+        direccion_entrega: 'Este texto no debe prevalecer',
+        metodo_pago: 'efectivo'
       })
     }, clientCookie);
     assert.equal(result.response.status, 201);
+    assert.equal(Number(result.data.direccion_cliente_id), savedAddressId);
+    assert.equal(result.data.direccion_entrega, 'Urbanización Agua Clara, casa 12');
+    assert.equal(result.data.indicaciones_entrega, 'Portón azul, llamar al llegar');
+    assert.equal(Number(result.data.latitud_entrega), -0.180653);
     orderId = result.data.id;
     const receivedOrder = await adminReceivedOrder;
     assert.equal(Number(receivedOrder.pedido_id), orderId);

@@ -27,6 +27,7 @@ const organizacionRoutes = require('./routes/organizacion.routes');
 const logisticaRoutes = require('./routes/logistica.routes');
 const recurrentesRoutes = require('./routes/recurrentes.routes');
 const platformRoutes = require('./routes/platform.routes');
+const direccionesRoutes = require('./routes/direcciones.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -184,6 +185,7 @@ app.use('/api/organizacion', organizacionRoutes);
 app.use('/api/logistica', logisticaRoutes);
 app.use('/api/recurrentes', recurrentesRoutes);
 app.use('/api/platform', platformRoutes);
+app.use('/api/direcciones', direccionesRoutes);
 
 app.get('/api/health', async (req, res) => {
   try {

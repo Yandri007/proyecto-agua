@@ -688,7 +688,15 @@ router.get(
   async (req, res) => {
     try {
       const result = await pool.query(
-        `SELECT u.id, u.nombre, u.email, u.telefono, u.direccion, u.estado,
+        `SELECT u.id, u.nombre, u.email, u.telefono,
+                COALESCE((
+                  SELECT dc.direccion FROM direcciones_clientes dc
+                  WHERE dc.empresa_id = u.empresa_id AND dc.cliente_id = u.id
+                  ORDER BY dc.es_predeterminada DESC, dc.creado_en LIMIT 1
+                ), u.direccion) AS direccion,
+                (SELECT COUNT(*)::INT FROM direcciones_clientes dc
+                 WHERE dc.empresa_id = u.empresa_id AND dc.cliente_id = u.id) AS direcciones_total,
+                u.estado,
                 u.email_verificado_en, u.acceso_cliente_autorizado_en,
                 u.ultimo_acceso_en, u.creado_en,
                 COUNT(p.id)::INT AS pedidos_total,

@@ -383,6 +383,7 @@
                         <i class="fas fa-user"></i> Cliente: ${escapeHtml(p.cliente_nombre || 'Cliente #' + p.cliente_id)}<br>
                         <i class="fas fa-dollar-sign"></i> Subtotal: $${Number(p.subtotal_productos || p.total).toFixed(2)} · ${p.metodo_pago === 'transferencia' ? 'Transferencia' : 'Efectivo'}<br>
                         <i class="fas fa-map-pin"></i> Dirección: ${escapeHtml(p.direccion_entrega || 'No especificada')}<br>
+                        ${p.indicaciones_entrega ? `<span class="text-muted"><i class="fas fa-circle-info"></i> ${escapeHtml(p.indicaciones_entrega)}</span><br>` : ''}
                         <div class="item-list">${(p.productos || []).map(item => `${Number(item.cantidad)} × ${escapeHtml(item.nombre)}`).join('<br>')}</div>
                         ${p.estado !== 'entregado' ? `<button class="btn-success" style="margin-top:12px; padding:10px;" onclick="entregarPedido(${p.id})"><i class="fas fa-file-signature"></i> Confirmar entrega</button>` : '<span style="color:#2ecc71;"><i class="fas fa-check-circle"></i> Entregado</span>'}
                     </div>
