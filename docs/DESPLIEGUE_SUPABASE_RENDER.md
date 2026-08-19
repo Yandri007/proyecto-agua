@@ -29,8 +29,38 @@ acuerdo de disponibilidad a clientes.
    `pg_dump` y `pg_restore` desde un equipo que tenga conectividad IPv6. Esta
    segunda URL no es necesaria para ejecutar la aplicacion en Render.
 
+### Cerrar la Data API
+
+AquaControl no consulta Supabase desde el navegador ni usa Supabase Auth. La
+unica conexion de datos permitida es PostgreSQL sobre TLS desde el backend de
+Render. Por esa razon:
+
+1. En Supabase abrir `Project Settings > Data API`.
+2. Desactivar `Enable Data API` para este proyecto.
+3. Abrir `Database > Advisors > Security` y volver a ejecutar el analisis.
+
+En cada arranque, AquaControl tambien activa RLS en sus 24 tablas y revoca los
+privilegios de `anon`, `authenticated` y `service_role`. No crea politicas
+publicas. Los objetos que se creen posteriormente con la conexion del backend
+heredan privilegios cerrados por defecto.
+
+Para comprobar esta configuracion contra la base indicada por `DATABASE_URL`:
+
+```bash
+cd backend
+npm run audit:db-security
+```
+
+El comando debe informar `24 tablas con RLS y sin acceso Data API publico`.
+
 No se deben copiar estas URLs al repositorio, archivos Markdown, capturas ni
 mensajes. Render las almacena como secretos.
+
+Si una URL con la contrasena PostgreSQL se compartio en un mensaje o captura,
+se debe cambiar la contrasena en Supabase y actualizar `DATABASE_URL` en Render
+antes de revocar la anterior. Una clave `sb_publishable_...` identifica el
+proyecto pero no sustituye RLS; una clave secreta o `service_role` nunca debe
+estar en el frontend.
 
 Documentacion: https://supabase.com/docs/guides/database/connecting-to-postgres
 

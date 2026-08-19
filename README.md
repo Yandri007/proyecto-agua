@@ -107,6 +107,7 @@ locales. No debe reutilizarse sin cambios en producción.
 cd backend
 npm test
 npm run check
+npm run audit:db-security
 npm run test:integration
 npm run test:load
 npm run test:deployment

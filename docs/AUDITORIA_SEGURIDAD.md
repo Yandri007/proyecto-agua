@@ -1,6 +1,6 @@
 # Auditoría técnica de seguridad
 
-Fecha: 10 de agosto de 2026.
+Fecha: 19 de agosto de 2026.
 
 ## Resultado
 
@@ -30,11 +30,16 @@ penetración independiente.
   configurable de ubicaciones.
 - Firma de webhooks de pago y comprobación de comercio y antigüedad.
 - Escaneo de secretos de alta confianza y revisión de archivos ignorados.
+- RLS obligatorio en las 24 tablas de negocio del esquema `public`.
+- Revocación de lectura y escritura para los roles Data API `anon` y
+  `authenticated`, además de privilegios cerrados por defecto para objetos
+  futuros.
 
 ## Evidencia ejecutada
 
-- `npm test`: 14 de 14 pruebas aprobadas.
-- `npm run check`: 7 HTML y 5 scripts verificados.
+- `npm test`: 22 de 22 pruebas aprobadas.
+- `npm run check`: 8 HTML y 6 scripts verificados.
+- `npm run audit:db-security`: 24 tablas con RLS y sin acceso Data API público.
 - `npm run test:integration`: identidad, recurrencias, módulos, personal,
   planta, flota, ventas, GPS, comprobantes, cierres, stock y eventos en tiempo
   real para administrador, cliente, repartidor, RH y jefe de planta aprobados.

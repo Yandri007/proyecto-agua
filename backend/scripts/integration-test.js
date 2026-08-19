@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { io } = require('socket.io-client');
 const pool = require('../config/database');
+const { APP_PUBLIC_TABLES, auditPublicSchemaSecurity } = require('../utils/databaseSecurity');
 
 const baseUrl = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -137,6 +138,12 @@ const createCompany = async (slug, suffix) => {
 
 const run = async () => {
   try {
+    const databaseSecurity = await auditPublicSchemaSecurity(pool);
+    assert.equal(databaseSecurity.tableCount, APP_PUBLIC_TABLES.length);
+    assert.deepEqual(databaseSecurity.missingTables, []);
+    assert.deepEqual(databaseSecurity.rlsDisabled, []);
+    assert.deepEqual(databaseSecurity.exposedPrivileges, []);
+
     const htmlNonces = new Set();
     for (const path of ['/', '/admin/', '/cliente/app.html', '/repartidor/', '/equipo/']) {
       const response = await fetch(`${baseUrl}${path}`);

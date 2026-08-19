@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const env = require('./env');
 const logger = require('../utils/logger');
+const { hardenPublicSchema } = require('../utils/databaseSecurity');
 
 const pool = new Pool(env.db);
 pool.on('error', (error) => {
@@ -573,8 +574,12 @@ const initializeDatabase = async () => {
     await client.query('CREATE INDEX IF NOT EXISTS movimientos_envases_empresa_idx ON movimientos_envases (empresa_id, creado_en DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS cierres_ruta_empresa_idx ON cierres_ruta (empresa_id, fecha DESC)');
 
+    const securityAudit = await hardenPublicSchema(client);
     await client.query('COMMIT');
-    console.log('Base de datos verificada y lista');
+    logger.info('database_initialized', {
+      tablesProtectedByRls: securityAudit.tableCount,
+      dataApiRolesRevoked: securityAudit.dataApiRoles
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
