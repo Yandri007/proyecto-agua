@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseCookies } = require('../middleware/auth');
-const { isAllowedOrigin } = require('../server');
+const { isAllowedOrigin, apiRateLimitKey } = require('../server');
 const { normalizeSlug } = require('../utils/tenant');
 const { hashToken } = require('../utils/accountTokens');
 const { hasTenantAccess } = require('../utils/plans');
@@ -169,6 +169,19 @@ test('isAllowedOrigin rechaza un sitio externo', () => {
 
 test('isAllowedOrigin permite clientes nativos sin encabezado Origin', () => {
   assert.equal(isAllowedOrigin(undefined, 'localhost:3000'), true);
+});
+
+test('el limite general separa sesiones aunque compartan la misma red', () => {
+  const request = (cookie) => ({
+    get: (name) => name === 'cookie' ? cookie : undefined,
+    ip: '192.0.2.10',
+    socket: { remoteAddress: '192.0.2.10' }
+  });
+  const adminKey = apiRateLimitKey(request('aquacontrol_session=admin-token'));
+  const clientKey = apiRateLimitKey(request('aquacontrol_session=client-token'));
+  assert.notEqual(adminKey, clientKey);
+  assert.equal(adminKey, apiRateLimitKey(request('aquacontrol_session=admin-token')));
+  assert.equal(apiRateLimitKey(request('tema=claro')), 'ip:192.0.2.10');
 });
 
 test('normalizeSlug produce códigos de empresa estables y seguros', () => {

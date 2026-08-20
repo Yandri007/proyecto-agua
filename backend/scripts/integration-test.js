@@ -590,14 +590,17 @@ const run = async () => {
         productos: [{ producto_id: product.id, cantidad: 1 }],
         direccion_id: savedAddressId,
         direccion_entrega: 'Este texto no debe prevalecer',
-        metodo_pago: 'efectivo'
+        metodo_pago: 'efectivo',
+        latitud_entrega: -0.181111,
+        longitud_entrega: -78.468222
       })
     }, clientCookie);
     assert.equal(result.response.status, 201);
     assert.equal(Number(result.data.direccion_cliente_id), savedAddressId);
     assert.equal(result.data.direccion_entrega, 'Urbanización Agua Clara, casa 12');
     assert.equal(result.data.indicaciones_entrega, 'Portón azul, llamar al llegar');
-    assert.equal(Number(result.data.latitud_entrega), -0.180653);
+    assert.equal(Number(result.data.latitud_entrega), -0.181111);
+    assert.equal(Number(result.data.longitud_entrega), -78.468222);
     orderId = result.data.id;
     const receivedOrder = await adminReceivedOrder;
     assert.equal(Number(receivedOrder.pedido_id), orderId);

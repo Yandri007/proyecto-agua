@@ -564,7 +564,7 @@
             
             socket.on('pedido_recibido', (data) => {
                 mostrarToast(`Nuevo pedido #${data.pedido_id} de ${data.cliente} por $${data.total}`, 'info');
-                cargarDatosIniciales();
+                refrescarAdminPorOperacion({ recurso: '/api/pedidos' });
             });
             
             socket.on('pedido_actualizado', (data) => {

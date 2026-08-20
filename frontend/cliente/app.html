@@ -125,6 +125,9 @@
                     <select id="direccionGuardada" class="address-control" onchange="seleccionarDireccion()"><option value="">Nueva dirección</option></select>
                     <input id="direccionEntrega" class="address-control" type="text" maxlength="300" placeholder="Calle, número y referencia" aria-label="Dirección de entrega">
                     <textarea id="indicacionesEntrega" class="address-control" maxlength="300" placeholder="Indicaciones para encontrar el lugar" aria-label="Indicaciones de entrega"></textarea>
+                    <input id="pedidoLatitud" type="hidden">
+                    <input id="pedidoLongitud" type="hidden">
+                    <div class="location-row"><button class="location-button" type="button" onclick="capturarUbicacionPedido()"><i class="fas fa-crosshairs"></i> Usar mi ubicación</button><span id="pedidoUbicacionEstado" class="location-status">Ubicación GPS opcional</span></div>
                     <label for="pedidoMetodoPago" style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Método de pago</label>
                     <select id="pedidoMetodoPago" style="width:100%; padding:12px; border:1px solid #d9e2ec; border-radius:10px; margin-bottom:14px;"><option value="efectivo">Efectivo al recibir</option><option value="transferencia">Transferencia</option></select>
                     <div id="carrito">Carrito vacío</div>
@@ -323,11 +326,11 @@
             
             socket.on('confirmacion_entrega', (data) => {
                 mostrarToast('Pedido entregado. Confirma la recepción.', 'success');
-                cargarMisPedidos();
+                refrescarCliente();
             });
 
             socket.on('pedido_actualizado', () => {
-                cargarMisPedidos();
+                refrescarCliente();
             });
             socket.on('branding_actualizada', cargarMarcaEmpresa);
 
@@ -475,10 +478,18 @@
                 instructionsInput.value = address.indicaciones || '';
                 addressInput.readOnly = true;
                 instructionsInput.readOnly = true;
+                document.getElementById('pedidoLatitud').value = address.latitud ?? '';
+                document.getElementById('pedidoLongitud').value = address.longitud ?? '';
+                document.getElementById('pedidoUbicacionEstado').textContent = address.latitud != null && address.longitud != null
+                    ? 'Ubicación de la dirección guardada'
+                    : 'Esta dirección no tiene ubicación GPS';
                 return;
             }
             addressInput.readOnly = false;
             instructionsInput.readOnly = false;
+            document.getElementById('pedidoLatitud').value = '';
+            document.getElementById('pedidoLongitud').value = '';
+            document.getElementById('pedidoUbicacionEstado').textContent = 'Ubicación GPS opcional';
             if (limpiarManual) {
                 addressInput.value = '';
                 instructionsInput.value = '';
@@ -532,20 +543,45 @@
             document.getElementById('direccionEtiqueta').focus();
         }
 
-        function capturarUbicacionDireccion() {
-            const status = document.getElementById('direccionUbicacionEstado');
+        function mensajeErrorUbicacion(error) {
+            if (error?.code === 1) return 'Permite la ubicación desde el icono junto a la dirección web';
+            if (error?.code === 2) return 'El dispositivo no pudo calcular tu ubicación';
+            if (error?.code === 3) return 'La ubicación tardó demasiado. Intenta nuevamente';
+            return 'No fue posible obtener la ubicación';
+        }
+
+        function obtenerUbicacionActual(status, onSuccess) {
             if (!navigator.geolocation) {
                 status.textContent = 'Este dispositivo no permite obtener ubicación';
                 return;
             }
             status.textContent = 'Obteniendo ubicación...';
             navigator.geolocation.getCurrentPosition(position => {
-                document.getElementById('direccionLatitud').value = position.coords.latitude;
-                document.getElementById('direccionLongitud').value = position.coords.longitude;
-                status.textContent = `Ubicación guardada · precisión ${Math.round(position.coords.accuracy)} m`;
-            }, () => {
-                status.textContent = 'No fue posible obtener la ubicación';
-            }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
+                onSuccess(position.coords);
+                status.textContent = `Ubicación lista · precisión ${Math.round(position.coords.accuracy)} m`;
+            }, error => {
+                status.textContent = mensajeErrorUbicacion(error);
+            }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
+        }
+
+        function capturarUbicacionDireccion() {
+            obtenerUbicacionActual(document.getElementById('direccionUbicacionEstado'), coords => {
+                document.getElementById('direccionLatitud').value = coords.latitude;
+                document.getElementById('direccionLongitud').value = coords.longitude;
+            });
+        }
+
+        function capturarUbicacionPedido() {
+            obtenerUbicacionActual(document.getElementById('pedidoUbicacionEstado'), coords => {
+                const addressSelect = document.getElementById('direccionGuardada');
+                if (addressSelect.value) {
+                    addressSelect.value = '';
+                    document.getElementById('direccionEntrega').readOnly = false;
+                    document.getElementById('indicacionesEntrega').readOnly = false;
+                }
+                document.getElementById('pedidoLatitud').value = coords.latitude;
+                document.getElementById('pedidoLongitud').value = coords.longitude;
+            });
         }
 
         async function guardarDireccion(event) {
@@ -821,6 +857,8 @@
             }
 
             const selectedAddressId = Number(document.getElementById('direccionGuardada').value) || null;
+            const latitude = document.getElementById('pedidoLatitud').value;
+            const longitude = document.getElementById('pedidoLongitud').value;
             const pedidoData = {
                 productos: carrito.map(i => ({
                     producto_id: i.producto_id,
@@ -830,8 +868,8 @@
                 direccion_entrega: direccion,
                 indicaciones_entrega: document.getElementById('indicacionesEntrega').value.trim(),
                 metodo_pago: document.getElementById('pedidoMetodoPago').value,
-                latitud_entrega: null,
-                longitud_entrega: null
+                latitud_entrega: latitude === '' ? null : Number(latitude),
+                longitud_entrega: longitude === '' ? null : Number(longitude)
             };
             
             try {
@@ -845,9 +883,12 @@
                 if (!selectedAddressId) {
                     document.getElementById('direccionEntrega').value = '';
                     document.getElementById('indicacionesEntrega').value = '';
+                    document.getElementById('pedidoLatitud').value = '';
+                    document.getElementById('pedidoLongitud').value = '';
+                    document.getElementById('pedidoUbicacionEstado').textContent = 'Ubicación GPS opcional';
                 }
                 document.getElementById('modalPedido').style.display = 'flex';
-                await cargarMisPedidos();
+                refrescarCliente();
             } catch (error) {
                 mostrarToast(error.message || 'No fue posible realizar el pedido', 'error');
             } finally {
@@ -992,6 +1033,11 @@
                         seleccionarDireccion(false);
                         document.getElementById('direccionEntrega').value = pedido.direccion_entrega || '';
                         document.getElementById('indicacionesEntrega').value = pedido.indicaciones_entrega || '';
+                        document.getElementById('pedidoLatitud').value = pedido.latitud_entrega ?? '';
+                        document.getElementById('pedidoLongitud').value = pedido.longitud_entrega ?? '';
+                        document.getElementById('pedidoUbicacionEstado').textContent = pedido.latitud_entrega != null
+                            ? 'Ubicación del pedido anterior'
+                            : 'Ubicación GPS opcional';
                     }
                     actualizarCarrito();
                     mostrarToast('Productos agregados al carrito', 'success');

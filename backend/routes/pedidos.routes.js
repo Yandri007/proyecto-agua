@@ -55,6 +55,10 @@ router.post('/', checkRole(['cliente']), async (req, res) => {
   let deliveryInstructions = indicaciones_entrega || null;
   let latitudeValue = latitud_entrega;
   let longitudeValue = longitud_entrega;
+  const hasRequestedCoordinates = latitud_entrega !== null
+    && latitud_entrega !== undefined
+    && longitud_entrega !== null
+    && longitud_entrega !== undefined;
   if (addressId !== null) {
     const savedAddress = await pool.query(
       `SELECT direccion, indicaciones, latitud, longitud
@@ -67,8 +71,8 @@ router.post('/', checkRole(['cliente']), async (req, res) => {
     }
     deliveryAddress = savedAddress.rows[0].direccion;
     deliveryInstructions = savedAddress.rows[0].indicaciones;
-    latitudeValue = savedAddress.rows[0].latitud;
-    longitudeValue = savedAddress.rows[0].longitud;
+    latitudeValue = hasRequestedCoordinates ? latitud_entrega : savedAddress.rows[0].latitud;
+    longitudeValue = hasRequestedCoordinates ? longitud_entrega : savedAddress.rows[0].longitud;
   }
 
   if (!isSafeText(deliveryAddress, 3, 300)) {

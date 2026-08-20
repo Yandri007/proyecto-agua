@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const http = require('http');
 const socketIO = require('socket.io');
 const jwt = require('jsonwebtoken');
@@ -35,6 +35,31 @@ const brandingRoutes = require('./routes/branding.routes');
 
 const app = express();
 const server = http.createServer(app);
+
+const apiRateLimitKey = (req) => {
+  try {
+    const sessionToken = parseCookies(req.get('cookie'))[env.sessionCookie];
+    if (sessionToken) {
+      return `session:${crypto.createHash('sha256').update(sessionToken).digest('hex')}`;
+    }
+  } catch (error) {
+    // A malformed cookie must fall back to the network key, not bypass the limiter.
+  }
+  const address = req.ip || req.socket?.remoteAddress || 'unknown';
+  return `ip:${ipKeyGenerator(address)}`;
+};
+
+const healthLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  keyGenerator: apiRateLimitKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({
+    message: 'Comprobación de salud temporalmente limitada',
+    status: 'limited'
+  })
+});
 
 const isAllowedOrigin = (origin, host) => {
   // Native clients do not always send Origin. Cookie mutations still pass the CSRF guard below.
@@ -133,12 +158,19 @@ app.use((req, res, next) => cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 })(req, res, next));
 
-// Global rate limiter (keeps default generous but safer than unlimited)
-app.use(rateLimit({
+// API traffic is limited per session. Static assets, Socket.IO and health checks
+// stay outside this budget so normal multi-panel operation cannot look offline.
+app.use('/api', rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+  limit: 1200,
+  keyGenerator: apiRateLimitKey,
+  skip: (req) => req.path === '/health',
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({
+    error: 'Demasiadas solicitudes. Espera un momento y vuelve a intentar.',
+    code: 'RATE_LIMITED'
+  })
 }));
 const mediaJsonParser = express.json({ limit: '1200kb' });
 app.use((req, res, next) => {
@@ -202,7 +234,7 @@ app.use('/api/rutas', rutasRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
 app.use('/api/branding', brandingRoutes);
 
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', healthLimiter, async (req, res) => {
   try {
     await db.query('SELECT 1');
     return res.json({
@@ -514,4 +546,4 @@ if (require.main === module) {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
-module.exports = { app, server, start, io, isAllowedOrigin, shutdown };
+module.exports = { app, server, start, io, isAllowedOrigin, apiRateLimitKey, shutdown };
