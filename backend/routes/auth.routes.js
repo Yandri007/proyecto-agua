@@ -8,7 +8,11 @@ const env = require('../config/env');
 const { verifyToken, checkRole } = require('../middleware/auth');
 const { normalizeSlug, seedDefaultProducts } = require('../utils/tenant');
 const { createUserToken, findValidToken } = require('../utils/accountTokens');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const {
+  buildVerificationUrl,
+  sendVerificationEmail,
+  sendPasswordResetEmail
+} = require('../utils/email');
 const { writeAudit } = require('../utils/audit');
 const { getPlan, requireActiveSubscription } = require('../utils/plans');
 const logger = require('../utils/logger');
@@ -809,13 +813,18 @@ router.post(
         action: 'repartidor.verificacion_reenviada',
         entity: 'usuarios',
         entityId: user.id,
-        details: { entregado_proveedor: emailResult.delivered }
+        details: {
+          entregado_proveedor: emailResult.delivered,
+          enlace_manual_emitido: true
+        }
       });
+      res.set('Cache-Control', 'no-store');
       return res.json({
         message: emailResult.delivered
           ? 'Enlace de acceso enviado al repartidor.'
           : 'No se pudo enviar el correo. Revisa la configuracion del proveedor.',
         email_sent: emailResult.delivered,
+        activation_url: buildVerificationUrl(token),
         development_url: emailResult.developmentUrl
       });
     } catch (error) {
@@ -876,6 +885,7 @@ router.post(
       await client.query('COMMIT');
       transactionStarted = false;
       const emailResult = await deliverVerification(user, verificationToken);
+      res.set('Cache-Control', 'no-store');
       return res.status(201).json({
         ...user,
         email_verificado_en: null,
@@ -883,6 +893,7 @@ router.post(
         message: emailResult.delivered
           ? 'Repartidor creado. Enlace de acceso enviado.'
           : 'Repartidor creado, pero el correo no pudo enviarse.',
+        activation_url: buildVerificationUrl(verificationToken),
         development_url: emailResult.developmentUrl
       });
     } catch (error) {

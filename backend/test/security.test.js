@@ -12,7 +12,12 @@ const { parseDatabaseUrl, databaseConnectionFromEnv } = require('../utils/databa
 const { isTlsDatabaseClient } = require('../config/database');
 const { requireCurrentPlatformPassword } = require('../middleware/platformAuth');
 const env = require('../config/env');
-const { configuredProvider, parseSender, sendEmail } = require('../utils/email');
+const {
+  buildVerificationUrl,
+  configuredProvider,
+  parseSender,
+  sendEmail
+} = require('../utils/email');
 const { parseImageDataUrl } = require('../utils/imageData');
 const {
   buildClientPortalUrl,
@@ -72,6 +77,12 @@ test('el remitente se adapta al formato requerido por Brevo', () => {
     name: 'AquaControl',
     email: 'avisos@example.com'
   });
+});
+
+test('el enlace de activacion codifica el token y conserva el origen configurado', () => {
+  const activationUrl = new URL(buildVerificationUrl('token con simbolos+/='));
+  assert.equal(activationUrl.origin, new URL(env.appUrl).origin);
+  assert.equal(activationUrl.searchParams.get('verify_token'), 'token con simbolos+/=');
 });
 
 test('Brevo se puede usar sin retirar la configuracion de Resend', async () => {

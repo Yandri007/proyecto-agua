@@ -265,6 +265,7 @@ const run = async () => {
     }, adminCookie);
     assert.equal(result.response.status, 201, JSON.stringify(result.data));
     assert.equal(typeof result.data.email_sent, 'boolean');
+    assert.equal(new URL(result.data.activation_url).searchParams.has('verify_token'), true);
     driverId = result.data.id;
 
     result = await request(`/api/auth/repartidores/${driverId}/resend-verification`, {
@@ -272,7 +273,8 @@ const run = async () => {
     }, adminCookie);
     assert.equal(result.response.status, 200, JSON.stringify(result.data));
     assert.equal(typeof result.data.email_sent, 'boolean');
-    await verifyEmail(result.data.development_url);
+    assert.equal(new URL(result.data.activation_url).searchParams.has('verify_token'), true);
+    await verifyEmail(result.data.activation_url);
 
     result = await request('/api/logistica/vehiculos', {
       method: 'POST',

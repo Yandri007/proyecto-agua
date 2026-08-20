@@ -24,6 +24,10 @@ const configuredProvider = () => {
   return null;
 };
 
+const buildVerificationUrl = (token) => (
+  `${env.appUrl}/?verify_token=${encodeURIComponent(token)}`
+);
+
 const sendWithBrevo = async ({ to, subject, text, html, idempotencyKey }) => {
   const body = {
     sender: parseSender(env.email.from),
@@ -89,7 +93,7 @@ const sendEmail = async ({ to, subject, text, html, idempotencyKey }) => {
 };
 
 const sendVerificationEmail = async ({ user, token }) => {
-  const verificationUrl = `${env.appUrl}/?verify_token=${encodeURIComponent(token)}`;
+  const verificationUrl = buildVerificationUrl(token);
   const safeName = escapeHtml(user.nombre);
   const result = await sendEmail({
     to: user.email,
@@ -115,6 +119,7 @@ const sendPasswordResetEmail = async ({ user, token }) => {
 };
 
 module.exports = {
+  buildVerificationUrl,
   configuredProvider,
   parseSender,
   sendEmail,

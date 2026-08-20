@@ -428,6 +428,20 @@
     <!-- Modal Repartidor -->
     <div id="repartidorModal" class="modal"><div class="modal-content"><h3>Nuevo Repartidor</h3><input type="text" id="repNombre" placeholder="Nombre" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="email" id="repEmail" placeholder="Email" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="password" id="repPassword" placeholder="Contraseña" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="text" id="repTelefono" placeholder="Teléfono" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><div class="modal-buttons" style="display:flex; gap:10px; margin-top:15px;"><button class="btn-filter" onclick="guardarRepartidor()">Guardar</button><button class="btn-danger" onclick="cerrarModal('repartidorModal')">Cancelar</button></div></div></div>
 
+    <!-- Modal Acceso Repartidor -->
+    <div id="repartidorAccesoModal" class="modal"><div class="modal-content">
+        <h3><i class="fas fa-key"></i> Acceso del repartidor</h3>
+        <p id="repartidorAccesoEstado" style="margin:12px 0; line-height:1.5;" aria-live="polite"></p>
+        <label for="repartidorAccesoUrl" style="display:block; text-align:left; font-weight:600;">Enlace de activación</label>
+        <input id="repartidorAccesoUrl" type="text" readonly style="width:100%; padding:10px; margin:7px 0 4px; border:1px solid #ccd6e0; border-radius:6px;">
+        <p style="font-size:13px; color:#5b6775; text-align:left; margin:0 0 16px;">Vence en 24 horas y solo puede utilizarse una vez.</p>
+        <div class="modal-buttons" style="display:flex; flex-wrap:wrap; justify-content:center; gap:10px;">
+            <button class="btn-filter" type="button" onclick="copiarAccesoRepartidor()"><i class="fas fa-copy"></i> Copiar</button>
+            <button class="btn-export" type="button" onclick="compartirAccesoRepartidor()"><i class="fab fa-whatsapp"></i> Compartir</button>
+            <button class="btn-danger" type="button" onclick="cerrarModal('repartidorAccesoModal')">Cerrar</button>
+        </div>
+    </div></div>
+
     <div id="vehiculoModal" class="modal"><div class="modal-content"><h3>Configurar vehículo</h3><input type="hidden" id="vehiculoId"><label>Placa<input id="vehiculoPlaca" maxlength="16" style="width:100%; padding:10px; margin:6px 0;"></label><label>Nombre operativo<input id="vehiculoNombre" maxlength="80" style="width:100%; padding:10px; margin:6px 0;"></label><label>Repartidor<select id="vehiculoRepartidor" style="width:100%; padding:10px; margin:6px 0;"></select></label><label>Estado<select id="vehiculoEstado" style="width:100%; padding:10px; margin:6px 0;"><option value="activo">Activo</option><option value="mantenimiento">Mantenimiento</option><option value="inactivo">Inactivo</option></select></label><div class="modal-buttons" style="display:flex; gap:10px; margin-top:15px;"><button class="btn-filter" onclick="guardarVehiculo()">Guardar</button><button class="btn-danger" onclick="cerrarModal('vehiculoModal')">Cancelar</button></div></div></div>
 
     <div id="movimientoVehiculoModal" class="modal"><div class="modal-content"><h3>Movimiento de inventario</h3><input type="hidden" id="movimientoVehiculoId"><label>Operación<select id="movimientoTipo" style="width:100%; padding:10px; margin:6px 0;"><option value="carga">Cargar desde bodega</option><option value="descarga">Devolver a bodega</option></select></label><label>Producto<select id="movimientoProducto" style="width:100%; padding:10px; margin:6px 0;"></select></label><label>Cantidad<input id="movimientoCantidad" type="number" min="1" max="1000000" style="width:100%; padding:10px; margin:6px 0;"></label><div class="modal-buttons" style="display:flex; gap:10px; margin-top:15px;"><button class="btn-filter" onclick="guardarMovimientoVehiculo()">Registrar</button><button class="btn-danger" onclick="cerrarModal('movimientoVehiculoModal')">Cancelar</button></div></div></div>
@@ -749,7 +763,7 @@
                                 <td>${escapeHtml(r.telefono || '-')}</td>
                                 <td><span class="badge ${r.email_verificado_en ? 'badge-entregado' : 'badge-pendiente'}">${r.email_verificado_en ? 'Verificado' : 'Pendiente'}</span></td>
                                 <td>${pedidos ? pedidos.filter(p => p.repartidor_id === r.id && p.estado === 'entregado').length : 0}</td>
-                                <td>${r.email_verificado_en ? '' : `<button class="btn-filter" style="padding:5px 10px;" onclick="reenviarAccesoRepartidor(${r.id})" title="Reenviar acceso"><i class="fas fa-envelope"></i></button>`}<button class="btn-danger" style="padding:5px 10px;" onclick="eliminarRepartidor(${r.id})" title="Desactivar repartidor"><i class="fas fa-trash"></i></button></td>
+                                <td>${r.email_verificado_en ? '' : `<button class="btn-filter" style="padding:5px 10px;" onclick="reenviarAccesoRepartidor(${r.id})" title="Generar o reenviar acceso"><i class="fas fa-envelope"></i></button>`}<button class="btn-danger" style="padding:5px 10px;" onclick="eliminarRepartidor(${r.id})" title="Desactivar repartidor"><i class="fas fa-trash"></i></button></td>
                             </tr>
                         `).join('');
                     }
@@ -1457,6 +1471,41 @@
 
         // ============ REPARTIDORES CRUD ============
         function mostrarModalRepartidor() { document.getElementById('repartidorModal').style.display = 'flex'; }
+
+        function mostrarAccesoRepartidor(response, email = '') {
+            if (!response.activation_url) return;
+            document.getElementById('repartidorAccesoUrl').value = response.activation_url;
+            document.getElementById('repartidorAccesoEstado').textContent = response.email_sent
+                ? `El proveedor aceptó el correo${email ? ` para ${email}` : ''}. También puedes compartir este enlace directamente.`
+                : `El correo no pudo entregarse${email ? ` a ${email}` : ''}. Comparte este enlace directamente con el repartidor.`;
+            document.getElementById('repartidorAccesoModal').style.display = 'flex';
+        }
+
+        async function copiarAccesoRepartidor() {
+            const input = document.getElementById('repartidorAccesoUrl');
+            try {
+                await navigator.clipboard.writeText(input.value);
+            } catch (_) {
+                input.select();
+                document.execCommand('copy');
+                input.setSelectionRange(0, 0);
+            }
+            mostrarToast('Enlace de activación copiado', 'success');
+        }
+
+        async function compartirAccesoRepartidor() {
+            const url = document.getElementById('repartidorAccesoUrl').value;
+            const text = 'Activa tu cuenta de repartidor en AquaControl. El enlace vence en 24 horas y funciona una sola vez.';
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title: 'Acceso a AquaControl', text, url });
+                    return;
+                } catch (error) {
+                    if (error.name === 'AbortError') return;
+                }
+            }
+            window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`, '_blank', 'noopener,noreferrer');
+        }
         
         async function guardarRepartidor() { 
             const data = { 
@@ -1479,9 +1528,9 @@
             });
             const responseData = await res.json();
             if (res.ok) {
-                mostrarToast(responseData.message || 'Repartidor registrado', responseData.email_sent ? 'success' : 'error');
-                if (responseData.development_url) prompt('Enlace local de verificación', responseData.development_url);
+                mostrarToast(responseData.message || 'Repartidor registrado', responseData.email_sent ? 'success' : 'info');
                 cerrarModal('repartidorModal'); 
+                mostrarAccesoRepartidor(responseData, data.email);
                 cargarRepartidores();
                 document.getElementById('repNombre').value = '';
                 document.getElementById('repEmail').value = '';
@@ -1497,8 +1546,9 @@
                 const response = await requestJson(`${API}/auth/repartidores/${id}/resend-verification`, {
                     method: 'POST'
                 });
-                mostrarToast(response.message, response.email_sent ? 'success' : 'error');
-                if (response.development_url) prompt('Enlace local de verificación', response.development_url);
+                mostrarToast(response.message, response.email_sent ? 'success' : 'info');
+                const repartidor = repartidores.find(item => item.id === id);
+                mostrarAccesoRepartidor(response, repartidor?.email || '');
             } catch (error) {
                 mostrarToast(error.message, 'error');
             }
