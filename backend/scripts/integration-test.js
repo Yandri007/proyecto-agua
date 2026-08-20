@@ -44,6 +44,16 @@ const request = async (path, options = {}, cookie = null) => {
   return { response, data };
 };
 
+const requestRaw = (path, options = {}, cookie = null) => fetch(`${baseUrl}${path}`, {
+  ...options,
+  headers: {
+    ...(cookie ? { Cookie: cookie } : {}),
+    Origin: baseUrl,
+    'X-Forwarded-For': testIp,
+    ...options.headers
+  }
+});
+
 const connectSocket = async (cookie) => {
   const socket = io(baseUrl, {
     transports: ['websocket'],
@@ -185,6 +195,36 @@ const run = async () => {
     assert.equal(result.data.length, 4);
     const product = result.data[0];
     const stockBefore = Number(product.stock);
+    const testImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+    result = await request('/api/branding', {
+      method: 'PUT',
+      body: JSON.stringify({ nombre: 'Agua Principal Personalizada' })
+    }, adminCookie);
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    assert.equal(result.data.nombre, 'Agua Principal Personalizada');
+
+    result = await request('/api/branding/logo', {
+      method: 'PUT',
+      body: JSON.stringify({ image: testImage })
+    }, adminCookie);
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    assert.ok(result.data.logo_url);
+
+    let imageResponse = await requestRaw('/api/branding/logo', {}, adminCookie);
+    assert.equal(imageResponse.status, 200);
+    assert.equal(imageResponse.headers.get('content-type'), 'image/png');
+
+    result = await request(`/api/productos/${product.id}/imagen`, {
+      method: 'PUT',
+      body: JSON.stringify({ image: testImage })
+    }, adminCookie);
+    assert.equal(result.response.status, 200, JSON.stringify(result.data));
+    assert.ok(result.data.imagen_url);
+
+    imageResponse = await requestRaw(`/api/productos/${product.id}/imagen`, {}, adminCookie);
+    assert.equal(imageResponse.status, 200);
+    assert.equal(imageResponse.headers.get('content-type'), 'image/png');
 
     result = await request(`/api/productos/${product.id}`, {
       method: 'PUT',
@@ -256,6 +296,16 @@ const run = async () => {
     result = await request(`/api/productos/${product.id}`, {}, secondary.cookie);
     assert.equal(result.response.status, 404);
 
+    imageResponse = await requestRaw('/api/branding/logo', {}, secondary.cookie);
+    assert.equal(imageResponse.status, 404);
+    imageResponse = await requestRaw(`/api/productos/${product.id}/imagen`, {}, secondary.cookie);
+    assert.equal(imageResponse.status, 404);
+    result = await request(`/api/productos/${product.id}/imagen`, {
+      method: 'PUT',
+      body: JSON.stringify({ image: testImage })
+    }, secondary.cookie);
+    assert.equal(result.response.status, 404);
+
     result = await request('/api/auth/client-portal', {}, adminCookie);
     assert.equal(result.response.status, 200);
     assert.equal(result.data.enabled, true);
@@ -303,6 +353,26 @@ const run = async () => {
     assert.equal(result.response.status, 200);
     const managedClient = result.data.find((item) => item.email === clientEmail);
     assert.ok(managedClient);
+
+    result = await request('/api/auth/clientes', {}, secondary.cookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.some((item) => item.id === managedClient.id), false);
+    result = await request(`/api/auth/clientes/${managedClient.id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ estado: 'inactivo' })
+    }, secondary.cookie);
+    assert.equal(result.response.status, 404);
+    result = await request('/api/auth/repartidores', {}, secondary.cookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.some((item) => item.id === driverId), false);
+    result = await request('/api/organizacion/equipo', {}, secondary.cookie);
+    assert.equal(result.response.status, 200);
+    assert.equal(result.data.some((item) => item.id === driverId), false);
+
+    imageResponse = await requestRaw('/api/branding/logo', {}, clientCookie);
+    assert.equal(imageResponse.status, 200);
+    imageResponse = await requestRaw(`/api/productos/${product.id}/imagen`, {}, clientCookie);
+    assert.equal(imageResponse.status, 200);
 
     result = await request('/api/auth/client-portal/rotate', { method: 'POST' }, adminCookie);
     assert.equal(result.response.status, 200);
@@ -973,7 +1043,7 @@ const run = async () => {
     assert.equal(result.response.status, 200);
     assert.ok(result.data.some((entry) => entry.accion === 'usuario.login'));
 
-    console.log('Integración verificada: portal, identidad, direcciones, rutas, incidencias, notificaciones, recurrencias, planta, flota, ventas, GPS, comprobantes, cierres y stock');
+    console.log('Integración verificada: aislamiento de clientes y roles, identidad visual, imágenes privadas, portal, direcciones, rutas, incidencias, notificaciones, recurrencias, planta, flota, ventas, GPS, comprobantes, cierres y stock');
   } finally {
     for (const socket of liveSockets) socket.disconnect();
     const client = await pool.connect();

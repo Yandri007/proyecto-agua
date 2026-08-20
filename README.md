@@ -36,6 +36,9 @@ Rutas:
 - Módulo de clientes para compartir o renovar el portal de alta, buscar cuentas
   y suspender o reactivar su acceso.
 - Aislamiento multiempresa en HTTP, PostgreSQL y salas WebSocket.
+- Identidad visual por empresa con nombre comercial y logotipo privado.
+- Imágenes personalizadas por producto, optimizadas en el navegador y validadas
+  como JPG o PNG antes de almacenarse en PostgreSQL.
 - Productos, inventario, pedidos, repartidores, entregas y confirmaciones.
 - Libreta de hasta diez direcciones por cliente, lugar predeterminado,
   indicaciones de entrega y ubicación opcional capturada con consentimiento.
@@ -126,7 +129,9 @@ npm run backup
 secretos. Debe aprobar antes de desplegar en producción.
 
 La integración requiere el servidor y PostgreSQL activos. Crea empresas
-temporales, comprueba aislamiento, portal de clientes, identidad, direcciones guardadas, rutas, incidencias, notificaciones, recurrencias, módulos, personal, planta, flota,
+temporales, comprueba aislamiento de clientes y roles, identidad visual, imágenes
+privadas por empresa, portal de clientes, direcciones guardadas, rutas, incidencias,
+notificaciones, recurrencias, módulos, personal, planta, flota,
 ventas en ruta, pedidos a direcciones distintas, stock, GPS,
 comprobantes, cierres, reportes y la CSP con nonce,
 y elimina los datos de prueba al terminar.

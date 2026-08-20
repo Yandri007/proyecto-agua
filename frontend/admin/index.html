@@ -24,7 +24,7 @@
         
         .sidebar { width: 280px; background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%); height: 100vh; position: fixed; color: white; overflow-y: auto; z-index: 100; }
         .sidebar-header { padding: 25px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .sidebar-header h2 { font-size: 24px; }
+        .sidebar-header h2 { display:flex; align-items:center; gap:8px; font-size:18px; overflow-wrap:anywhere; line-height:1.2; }
         .sidebar-header span { color: #00b4d8; }
         .sidebar-nav { padding: 20px; }
         .sidebar-nav a { display: flex; align-items: center; gap: 12px; padding: 12px 15px; margin: 5px 0; border-radius: 6px; color: #ccc; text-decoration: none; cursor: pointer; transition: 0.3s; }
@@ -119,6 +119,13 @@
         .route-stop { display:grid; grid-template-columns:28px 1fr auto; gap:9px; padding:10px 0; border-top:1px solid #edf0f4; align-items:center; }
         .route-stop-number { width:26px; height:26px; border-radius:50%; background:#e0f2fe; color:#075985; display:grid; place-items:center; font-size:12px; font-weight:700; }
         .route-empty { color:#667085; padding:24px; text-align:center; background:white; border:1px dashed #cbd5e1; border-radius:8px; }
+        .branding-editor { display:grid; grid-template-columns:100px minmax(220px,1fr) auto; gap:18px; align-items:center; }
+        .branding-preview { width:96px; height:96px; object-fit:contain; border:1px solid #dbe3ec; border-radius:8px; background:#f8fafc; padding:8px; }
+        .branding-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+        .branding-fields { display:grid; gap:10px; }
+        .product-image-editor { display:grid; grid-template-columns:84px 1fr; gap:12px; align-items:center; margin:10px 0; text-align:left; }
+        .product-image-preview { width:84px; height:84px; object-fit:contain; border:1px solid #dbe3ec; border-radius:7px; background:#f8fafc; padding:5px; }
+        .company-logo { width:34px; height:34px; object-fit:contain; border-radius:6px; background:white; padding:2px; vertical-align:middle; }
         @media (max-width: 1000px) { .module-grid { grid-template-columns: 1fr; } .compact-form-grid { grid-template-columns: repeat(2, 1fr); } }
         @media (max-width: 760px) {
             .sidebar { width: 72px; }
@@ -135,6 +142,7 @@
             .compact-form-grid { grid-template-columns: 1fr; }
             .client-portal { grid-template-columns:1fr; }
             .route-planner-grid, .route-list { grid-template-columns:1fr; }
+            .branding-editor { grid-template-columns:1fr; }
             .data-table table { min-width: 720px; }
             .stat-number { font-size: 24px; }
         }
@@ -154,7 +162,7 @@
     <div id="dashboardScreen" style="display:none">
         <div class="sidebar">
             <div class="sidebar-header">
-                <h2><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> Aqua<span>Control</span></h2>
+                <h2><img id="empresaLogoSidebar" class="company-logo" src="/assets/brand/aquacontrol-mark.svg" alt=""><span id="empresaMarcaSidebar">AquaControl</span></h2>
                 <p id="empresaNombre" style="font-size:13px; margin-top:8px; font-weight:600;">Distribuidora</p>
                 <p id="empresaCodigo" style="font-size:11px; margin-top:4px; color:#b8c4d6;"></p>
                 <p id="empresaPlan" style="font-size:11px; margin-top:4px; color:#b8c4d6;"></p>
@@ -317,6 +325,14 @@
             </div>
 
             <div id="tab-organizacion" class="tab">
+                <form class="compact-form branding-editor" onsubmit="guardarMarcaEmpresa(event)">
+                    <img id="marcaLogoPreview" class="branding-preview" src="/assets/brand/aquacontrol-mark.svg" alt="Vista previa del logotipo">
+                    <div class="branding-fields">
+                        <label>Nombre comercial<input id="marcaNombre" maxlength="120" required></label>
+                        <label>Logotipo JPG o PNG<input id="marcaLogoArchivo" type="file" accept="image/jpeg,image/png" onchange="previsualizarMarca()"></label>
+                    </div>
+                    <div class="branding-actions"><button class="btn-filter" type="submit"><i class="fas fa-floppy-disk"></i> Guardar</button><button id="eliminarLogoButton" class="btn-danger" type="button" onclick="eliminarLogoEmpresa()"><i class="fas fa-trash"></i> Quitar logo</button></div>
+                </form>
                 <div class="module-grid">
                     <label class="module-control"><span><strong>Ventas en ruta</strong></span><input id="moduloVentasRuta" type="checkbox" onchange="actualizarModulo('ventas_ruta', this.checked)"></label>
                     <label class="module-control"><span><strong>Recursos Humanos</strong></span><input id="moduloRh" type="checkbox" onchange="actualizarModulo('recursos_humanos', this.checked)"></label>
@@ -407,7 +423,7 @@
     <div id="confirmModal" class="modal"><div class="modal-content"><i class="fas fa-question-circle" style="font-size:50px; color:#f39c12;"></i><h3 style="margin:15px 0">¿Asignar este pedido?</h3><p id="confirmMsg"></p><button class="btn-filter" onclick="confirmarAsignacion()" style="margin:10px;"><i class="fas fa-check"></i> Sí, asignar</button><button class="btn-danger" onclick="cerrarModalConfirm()">Cancelar</button></div></div>
 
     <!-- Modal Producto -->
-    <div id="productoModal" class="modal"><div class="modal-content"><h3 id="modalProductoTitulo">Nuevo Producto</h3><input type="hidden" id="productoId"><input type="text" id="prodNombre" placeholder="Nombre" style="width:100%; padding:10px; margin:10px 0; border-radius:8px; border:1px solid #ddd;"><select id="prodTipo" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><option value="bidon">Bidón 20L</option><option value="galon">Galón 5L</option><option value="paca_botellas">Paca de botellas</option><option value="botella">Botella 1L</option></select><input type="number" id="prodPrecio" min="0" step="0.01" placeholder="Precio" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="number" id="prodStock" min="0" placeholder="Stock" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="number" id="prodStockMinimo" min="0" placeholder="Stock mínimo" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><label class="module-control" style="margin-top:8px;"><span><strong>Envase retornable</strong></span><input id="prodRetornable" type="checkbox" onchange="document.getElementById('prodDeposito').disabled = !this.checked"></label><input type="number" id="prodDeposito" min="0" step="0.01" placeholder="Depósito por envase" disabled style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><div class="modal-buttons" style="display:flex; gap:10px; margin-top:15px;"><button class="btn-filter" onclick="guardarProducto()">Guardar</button><button class="btn-danger" onclick="cerrarModal('productoModal')">Cancelar</button></div></div></div>
+    <div id="productoModal" class="modal"><div class="modal-content"><h3 id="modalProductoTitulo">Nuevo Producto</h3><input type="hidden" id="productoId"><input type="text" id="prodNombre" placeholder="Nombre" style="width:100%; padding:10px; margin:10px 0; border-radius:8px; border:1px solid #ddd;"><select id="prodTipo" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><option value="bidon">Bidón 20L</option><option value="galon">Galón 5L</option><option value="paca_botellas">Paca de botellas</option><option value="botella">Botella 1L</option></select><input type="number" id="prodPrecio" min="0" step="0.01" placeholder="Precio" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="number" id="prodStock" min="0" placeholder="Stock" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="number" id="prodStockMinimo" min="0" placeholder="Stock mínimo" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><label class="module-control" style="margin-top:8px;"><span><strong>Envase retornable</strong></span><input id="prodRetornable" type="checkbox" onchange="document.getElementById('prodDeposito').disabled = !this.checked"></label><input type="number" id="prodDeposito" min="0" step="0.01" placeholder="Depósito por envase" disabled style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><div class="product-image-editor"><img id="prodImagenPreview" class="product-image-preview" src="/assets/brand/aquacontrol-mark.svg" alt="Vista previa del producto"><div><label for="prodImagen">Imagen JPG o PNG</label><input id="prodImagen" type="file" accept="image/jpeg,image/png" onchange="previsualizarProducto()" style="width:100%; margin-top:7px;"><button id="quitarImagenProductoButton" class="btn-danger" type="button" onclick="eliminarImagenProducto()" style="display:none; margin-top:8px; padding:7px 10px;"><i class="fas fa-trash"></i> Quitar imagen</button></div></div><div class="modal-buttons" style="display:flex; gap:10px; margin-top:15px;"><button class="btn-filter" onclick="guardarProducto()">Guardar</button><button class="btn-danger" onclick="cerrarModal('productoModal')">Cancelar</button></div></div></div>
 
     <!-- Modal Repartidor -->
     <div id="repartidorModal" class="modal"><div class="modal-content"><h3>Nuevo Repartidor</h3><input type="text" id="repNombre" placeholder="Nombre" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="email" id="repEmail" placeholder="Email" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="password" id="repPassword" placeholder="Contraseña" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><input type="text" id="repTelefono" placeholder="Teléfono" style="width:100%; padding:10px; margin:10px 0; border-radius:8px;"><div class="modal-buttons" style="display:flex; gap:10px; margin-top:15px;"><button class="btn-filter" onclick="guardarRepartidor()">Guardar</button><button class="btn-danger" onclick="cerrarModal('repartidorModal')">Cancelar</button></div></div></div>
@@ -432,8 +448,15 @@
     </div>
 
     <script nonce="{{CSP_NONCE}}">
-        let token = null, socket = null, repartidores = [], productos = [], pedidos = [], ventasRuta = [], programacionesAdmin = [], vehiculos = [], cierresRuta = [], rutasEntrega = [], pedidosRuta = [], seleccionRuta = [], ventasChart, productosChart, ventasDiaSemanaChart, ventasMesDetalleChart, pedidoPorAsignar = null;
+        let token = null, socket = null, repartidores = [], productos = [], pedidos = [], ventasRuta = [], programacionesAdmin = [], vehiculos = [], cierresRuta = [], rutasEntrega = [], pedidosRuta = [], seleccionRuta = [], ventasChart, productosChart, ventasDiaSemanaChart, ventasMesDetalleChart, pedidoPorAsignar = null, marcaEmpresa = null;
         let mapaOperativo = null;
+        const imagenProductoPorTipo = Object.freeze({
+            bidon: '/assets/products/bidon-20l.jpg',
+            botella: '/assets/products/botella-1l.jpg',
+            galon: '/assets/products/galon-5l.jpg',
+            paca_botellas: '/assets/products/paca-6.jpg'
+        });
+        const imagenProducto = producto => producto?.imagen_url || imagenProductoPorTipo[producto?.tipo] || '/assets/brand/aquacontrol-mark.svg';
         const marcadoresOperativos = new Map();
         let billingConfig = null;
         let adminRefreshTimer = null;
@@ -499,6 +522,7 @@
             document.getElementById('empresaCodigo').innerText = `Código: ${user.empresa.slug}`;
             AquaUI.startSessionGuard('admin', user.id);
             empresaModulos = { ...empresaModulos, ...(user.empresa.modulos || {}) };
+            await cargarMarcaEmpresa();
             configurarVisibilidadModulos();
             const trialEnd = user.empresa.prueba_hasta ? new Date(user.empresa.prueba_hasta) : null;
             const remainingDays = trialEnd
@@ -550,6 +574,7 @@
             socket.on('ruta_actualizada', () => {
                 if (document.getElementById('tab-rutas').classList.contains('active')) cargarRutasAdmin();
             });
+            socket.on('branding_actualizada', cargarMarcaEmpresa);
 
             socket.on('pedido_cancelado', (data) => {
                 mostrarToast(`Pedido #${data.pedidoId} fue cancelado por el cliente`, 'warning');
@@ -1204,7 +1229,7 @@
                 tbody.innerHTML = prods.map(p => `
                     <tr>
                         <td>${p.id}</td>
-                        <td>${escapeHtml(p.nombre)}</td>
+                        <td><div style="display:flex;align-items:center;gap:9px;"><img src="${imagenProducto(p)}" alt="" width="42" height="42" style="object-fit:contain;border-radius:6px;border:1px solid #e1e7ef;"><span>${escapeHtml(p.nombre)}</span></div></td>
                         <td>${escapeHtml(p.tipo)}</td>
                         <td>${p.es_retornable ? `Retornable<div class="table-detail">Depósito $${Number(p.deposito_envase).toFixed(2)}</div>` : 'Desechable'}</td>
                         <td>$${p.precio}</td>
@@ -1293,6 +1318,9 @@
             document.getElementById('prodRetornable').checked = false;
             document.getElementById('prodDeposito').value = 0;
             document.getElementById('prodDeposito').disabled = true;
+            document.getElementById('prodImagen').value = '';
+            document.getElementById('prodImagenPreview').src = imagenProducto({ tipo: document.getElementById('prodTipo').value });
+            document.getElementById('quitarImagenProductoButton').style.display = 'none';
             document.getElementById('modalProductoTitulo').innerText = 'Nuevo Producto'; 
         }
         
@@ -1307,8 +1335,39 @@
             document.getElementById('prodRetornable').checked = Boolean(p.es_retornable);
             document.getElementById('prodDeposito').value = Number(p.deposito_envase || 0);
             document.getElementById('prodDeposito').disabled = !p.es_retornable;
+            document.getElementById('prodImagen').value = '';
+            document.getElementById('prodImagenPreview').src = imagenProducto(p);
+            document.getElementById('quitarImagenProductoButton').style.display = p.imagen_url ? 'inline-flex' : 'none';
             document.getElementById('modalProductoTitulo').innerText = 'Editar Producto'; 
             document.getElementById('productoModal').style.display = 'flex'; 
+        }
+
+        function previsualizarProducto() {
+            const file = document.getElementById('prodImagen').files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => { document.getElementById('prodImagenPreview').src = reader.result; };
+            reader.readAsDataURL(file);
+        }
+
+        async function eliminarImagenProducto() {
+            const id = Number(document.getElementById('productoId').value);
+            if (!id) {
+                document.getElementById('prodImagen').value = '';
+                document.getElementById('prodImagenPreview').src = imagenProducto({ tipo: document.getElementById('prodTipo').value });
+                return;
+            }
+            if (!confirm('¿Quitar la imagen personalizada del producto?')) return;
+            try {
+                await requestJson(`${API}/productos/${id}/imagen`, { method: 'DELETE' });
+                await cargarProductos();
+                const product = productos.find(item => item.id === id);
+                document.getElementById('prodImagenPreview').src = imagenProducto(product);
+                document.getElementById('quitarImagenProductoButton').style.display = 'none';
+                mostrarToast('Imagen del producto eliminada', 'success');
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            }
         }
         
         async function guardarProducto() { 
@@ -1330,13 +1389,21 @@
             const url = id ? `${API}/productos/${id}` : `${API}/productos`; 
             const method = id ? 'PUT' : 'POST'; 
             try {
-                await requestJson(url, {
+                const savedProduct = await requestJson(url, {
                     method,
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(data)
                 });
+                const imageFile = document.getElementById('prodImagen').files[0];
+                if (imageFile) {
+                    const image = await prepararImagen(imageFile, 1400, 800 * 1024);
+                    await requestJson(`${API}/productos/${savedProduct.id}/imagen`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image })
+                    });
+                }
                 cerrarModal('productoModal');
                 await cargarProductos();
                 await cargarInventario();
@@ -1702,6 +1769,111 @@
         }
 
         // ============ ORGANIZACIÓN Y MÓDULOS ============
+        const leerArchivoComoImagen = file => new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const image = new Image();
+            image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+            image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+            image.src = url;
+        });
+
+        const canvasComoBlob = (canvas, quality) => new Promise(resolve => {
+            canvas.toBlob(resolve, 'image/jpeg', quality);
+        });
+
+        const blobComoDataUrl = blob => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('No se pudo preparar la imagen'));
+            reader.readAsDataURL(blob);
+        });
+
+        async function prepararImagen(file, maxDimension, maxBytes) {
+            if (!file || !['image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+                throw new Error('Selecciona una imagen JPG o PNG de hasta 10 MB');
+            }
+            const source = await leerArchivoComoImagen(file);
+            const scale = Math.min(1, maxDimension / Math.max(source.naturalWidth, source.naturalHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(source.naturalWidth * scale));
+            canvas.height = Math.max(1, Math.round(source.naturalHeight * scale));
+            const context = canvas.getContext('2d', { alpha: false });
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(source, 0, 0, canvas.width, canvas.height);
+            for (const quality of [0.88, 0.8, 0.72, 0.64, 0.56]) {
+                const blob = await canvasComoBlob(canvas, quality);
+                if (blob && blob.size <= maxBytes) return blobComoDataUrl(blob);
+            }
+            throw new Error('La imagen sigue siendo demasiado pesada después de optimizarla');
+        }
+
+        function aplicarMarcaEmpresa(marca) {
+            marcaEmpresa = marca;
+            const logo = marca.logo_url || '/assets/brand/aquacontrol-mark.svg';
+            document.getElementById('empresaLogoSidebar').src = logo;
+            document.getElementById('empresaMarcaSidebar').textContent = marca.nombre;
+            document.getElementById('empresaNombre').textContent = marca.nombre;
+            document.getElementById('marcaNombre').value = marca.nombre;
+            document.getElementById('marcaLogoPreview').src = logo;
+            document.getElementById('eliminarLogoButton').style.display = marca.logo_url ? 'inline-flex' : 'none';
+        }
+
+        async function cargarMarcaEmpresa() {
+            try {
+                aplicarMarcaEmpresa(await requestJson(`${API}/branding`));
+            } catch (error) {
+                console.error('No fue posible cargar la identidad visual:', error);
+            }
+        }
+
+        function previsualizarMarca() {
+            const file = document.getElementById('marcaLogoArchivo').files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => { document.getElementById('marcaLogoPreview').src = reader.result; };
+            reader.readAsDataURL(file);
+        }
+
+        async function guardarMarcaEmpresa(event) {
+            event.preventDefault();
+            const button = event.submitter;
+            if (button) button.disabled = true;
+            try {
+                let marca = await requestJson(`${API}/branding`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre: document.getElementById('marcaNombre').value.trim() })
+                });
+                const file = document.getElementById('marcaLogoArchivo').files[0];
+                if (file) {
+                    const image = await prepararImagen(file, 512, 350 * 1024);
+                    marca = await requestJson(`${API}/branding/logo`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image })
+                    });
+                }
+                document.getElementById('marcaLogoArchivo').value = '';
+                aplicarMarcaEmpresa(marca);
+                mostrarToast('Identidad de la empresa actualizada', 'success');
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+                if (marcaEmpresa) aplicarMarcaEmpresa(marcaEmpresa);
+            } finally {
+                if (button) button.disabled = false;
+            }
+        }
+
+        async function eliminarLogoEmpresa() {
+            if (!marcaEmpresa?.logo_url || !confirm('¿Quitar el logotipo de la empresa?')) return;
+            try {
+                await requestJson(`${API}/branding/logo`, { method: 'DELETE' });
+                await cargarMarcaEmpresa();
+                mostrarToast('Logotipo eliminado', 'success');
+            } catch (error) {
+                mostrarToast(error.message, 'error');
+            }
+        }
+
         function configurarVisibilidadModulos() {
             document.getElementById('menu-ventas-ruta').style.display = empresaModulos.ventas_ruta ? 'flex' : 'none';
             document.getElementById('menu-planta').style.display = empresaModulos.planta ? 'flex' : 'none';

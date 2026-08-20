@@ -31,6 +31,7 @@ const platformRoutes = require('./routes/platform.routes');
 const direccionesRoutes = require('./routes/direcciones.routes');
 const rutasRoutes = require('./routes/rutas.routes');
 const notificacionesRoutes = require('./routes/notificaciones.routes');
+const brandingRoutes = require('./routes/branding.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -139,6 +140,14 @@ app.use(rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 }));
+const mediaJsonParser = express.json({ limit: '1200kb' });
+app.use((req, res, next) => {
+  const isLogoUpload = req.method === 'PUT' && req.path === '/api/branding/logo';
+  const isProductImageUpload = req.method === 'PUT'
+    && /^\/api\/productos\/\d+\/imagen$/.test(req.path);
+  if (isLogoUpload || isProductImageUpload) return mediaJsonParser(req, res, next);
+  return next();
+});
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 
@@ -191,6 +200,7 @@ app.use('/api/platform', platformRoutes);
 app.use('/api/direcciones', direccionesRoutes);
 app.use('/api/rutas', rutasRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
+app.use('/api/branding', brandingRoutes);
 
 app.get('/api/health', async (req, res) => {
   try {

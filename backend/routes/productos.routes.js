@@ -3,8 +3,20 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { verifyToken, checkRole } = require('../middleware/auth');
 const { requireActiveSubscription } = require('../utils/plans');
+const { parseImageDataUrl } = require('../utils/imageData');
+const { writeAudit } = require('../utils/audit');
 
 const router = express.Router();
+
+const productDto = (row) => {
+  const { imagen_mime: imageMime, imagen_actualizada_en: imageUpdatedAt, ...product } = row;
+  return {
+    ...product,
+    imagen_url: imageMime
+      ? `/api/productos/${row.id}/imagen?v=${new Date(imageUpdatedAt).getTime()}`
+      : null
+  };
+};
 
 const validateProduct = [
   body('nombre').trim().isLength({ min: 2, max: 100 }).withMessage('Nombre de producto inválido'),
@@ -30,13 +42,14 @@ router.use(requireActiveSubscription);
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase
+      `SELECT id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase,
+              imagen_mime, imagen_actualizada_en
        FROM productos
        WHERE empresa_id = $1 AND activo = TRUE
        ORDER BY nombre`,
       [req.user.empresa_id]
     );
-    return res.json(result.rows);
+    return res.json(result.rows.map(productDto));
   } catch (error) {
     console.error('Error cargando productos:', error);
     return res.status(500).json({ error: 'No fue posible cargar los productos' });
@@ -46,13 +59,14 @@ router.get('/', async (req, res) => {
 router.get('/reporte/stock-bajo', checkRole(['admin']), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase
+      `SELECT id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase,
+              imagen_mime, imagen_actualizada_en
        FROM productos
        WHERE empresa_id = $1 AND activo = TRUE AND stock <= stock_minimo
        ORDER BY stock ASC`,
       [req.user.empresa_id]
     );
-    return res.json(result.rows);
+    return res.json(result.rows.map(productDto));
   } catch (error) {
     console.error('Error cargando stock bajo:', error);
     return res.status(500).json({ error: 'No fue posible generar el reporte' });
@@ -112,6 +126,98 @@ router.post('/inicializar', checkRole(['admin']), async (req, res) => {
   }
 });
 
+router.get('/:id/imagen', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).end();
+  try {
+    const result = await pool.query(
+      `SELECT imagen_data, imagen_mime
+       FROM productos
+       WHERE id = $1 AND empresa_id = $2 AND activo = TRUE`,
+      [id, req.user.empresa_id]
+    );
+    const image = result.rows[0];
+    if (!image?.imagen_data || !image.imagen_mime) return res.status(404).end();
+    res.set({
+      'Cache-Control': 'private, max-age=86400',
+      'Content-Type': image.imagen_mime,
+      'Content-Length': image.imagen_data.length,
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.send(image.imagen_data);
+  } catch (error) {
+    console.error('Error cargando imagen del producto:', error);
+    return res.status(500).end();
+  }
+});
+
+router.put('/:id/imagen', checkRole(['admin']), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Producto invalido' });
+  }
+  let image;
+  try {
+    image = parseImageDataUrl(req.body?.image, {
+      maxBytes: 800 * 1024,
+      maxWidth: 2500,
+      maxHeight: 2500,
+      maxPixels: 6250000
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE productos
+       SET imagen_data = $1, imagen_mime = $2, imagen_actualizada_en = CURRENT_TIMESTAMP
+       WHERE id = $3 AND empresa_id = $4 AND activo = TRUE
+       RETURNING id, nombre, tipo, precio, stock, stock_minimo, es_retornable,
+                 deposito_envase, imagen_mime, imagen_actualizada_en`,
+      [image.data, image.mime, id, req.user.empresa_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+    await writeAudit({
+      req,
+      action: 'producto.imagen_actualizada',
+      entity: 'productos',
+      entityId: id,
+      details: { mime: image.mime, bytes: image.data.length, ancho: image.width, alto: image.height }
+    });
+    return res.json(productDto(result.rows[0]));
+  } catch (error) {
+    console.error('Error guardando imagen del producto:', error);
+    return res.status(500).json({ error: 'No fue posible guardar la imagen del producto' });
+  }
+});
+
+router.delete('/:id/imagen', checkRole(['admin']), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Producto invalido' });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE productos
+       SET imagen_data = NULL, imagen_mime = NULL, imagen_actualizada_en = CURRENT_TIMESTAMP
+       WHERE id = $1 AND empresa_id = $2 AND activo = TRUE
+       RETURNING id`,
+      [id, req.user.empresa_id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+    await writeAudit({
+      req,
+      action: 'producto.imagen_eliminada',
+      entity: 'productos',
+      entityId: id
+    });
+    return res.json({ message: 'Imagen del producto eliminada' });
+  } catch (error) {
+    console.error('Error eliminando imagen del producto:', error);
+    return res.status(500).json({ error: 'No fue posible eliminar la imagen del producto' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
@@ -119,7 +225,8 @@ router.get('/:id', async (req, res) => {
   }
   try {
     const result = await pool.query(
-      `SELECT id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase
+      `SELECT id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase,
+              imagen_mime, imagen_actualizada_en
        FROM productos
        WHERE id = $1 AND empresa_id = $2 AND activo = TRUE`,
       [id, req.user.empresa_id]
@@ -127,7 +234,7 @@ router.get('/:id', async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Producto no encontrado' });
     }
-    return res.json(result.rows[0]);
+    return res.json(productDto(result.rows[0]));
   } catch (error) {
     console.error('Error cargando producto:', error);
     return res.status(500).json({ error: 'No fue posible cargar el producto' });
@@ -148,10 +255,11 @@ router.post(
         `INSERT INTO productos
           (empresa_id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         RETURNING id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase`,
+         RETURNING id, nombre, tipo, precio, stock, stock_minimo, es_retornable,
+                   deposito_envase, imagen_mime, imagen_actualizada_en`,
         [req.user.empresa_id, nombre, tipo, precio, stock, stock_minimo, isReturnable, containerDeposit]
       );
-      return res.status(201).json(result.rows[0]);
+      return res.status(201).json(productDto(result.rows[0]));
     } catch (error) {
       console.error('Error creando producto:', error);
       return res.status(500).json({ error: 'No fue posible crear el producto' });
@@ -178,13 +286,14 @@ router.put(
          SET nombre = $1, tipo = $2, precio = $3, stock = $4, stock_minimo = $5,
              es_retornable = $6, deposito_envase = $7
          WHERE id = $8 AND empresa_id = $9 AND activo = TRUE
-         RETURNING id, nombre, tipo, precio, stock, stock_minimo, es_retornable, deposito_envase`,
+         RETURNING id, nombre, tipo, precio, stock, stock_minimo, es_retornable,
+                   deposito_envase, imagen_mime, imagen_actualizada_en`,
         [nombre, tipo, precio, stock, stock_minimo, isReturnable, containerDeposit, id, req.user.empresa_id]
       );
       if (result.rowCount === 0) {
         return res.status(404).json({ error: 'Producto no encontrado' });
       }
-      return res.json(result.rows[0]);
+      return res.json(productDto(result.rows[0]));
     } catch (error) {
       console.error('Error actualizando producto:', error);
       return res.status(500).json({ error: 'No fue posible actualizar el producto' });

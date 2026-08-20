@@ -116,6 +116,10 @@ const run = async () => {
   assert.equal(anonymousSession.status, 401, 'La API acepto una sesion anonima');
   const anonymousPlatformSession = await get('/api/platform/me');
   assert.equal(anonymousPlatformSession.status, 401, 'La consola global acepto una sesion anonima');
+  for (const path of ['/api/branding', '/api/branding/logo', '/api/productos/1/imagen']) {
+    const response = await get(path);
+    assert.equal(response.status, 401, `${path} expuso datos sin sesion`);
+  }
   await verifyAuthenticatedSession();
   console.log(`Staging verificado correctamente en ${baseUrl}`);
 };

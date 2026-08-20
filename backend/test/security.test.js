@@ -13,12 +13,37 @@ const { isTlsDatabaseClient } = require('../config/database');
 const { requireCurrentPlatformPassword } = require('../middleware/platformAuth');
 const env = require('../config/env');
 const { configuredProvider, parseSender, sendEmail } = require('../utils/email');
+const { parseImageDataUrl } = require('../utils/imageData');
 const {
   buildClientPortalUrl,
   createClientInvite,
   verifyClientInvite
 } = require('../utils/clientInvites');
 const crypto = require('crypto');
+
+test('las imagenes aceptan solo formatos raster pequenos y verificables', () => {
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  const parsed = parseImageDataUrl(png, {
+    maxBytes: 1024,
+    maxWidth: 100,
+    maxHeight: 100
+  });
+  assert.equal(parsed.mime, 'image/png');
+  assert.equal(parsed.width, 1);
+  assert.equal(parsed.height, 1);
+  assert.throws(
+    () => parseImageDataUrl('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=', {
+      maxBytes: 1024,
+      maxWidth: 100,
+      maxHeight: 100
+    }),
+    /JPG o PNG/
+  );
+  assert.throws(
+    () => parseImageDataUrl(png, { maxBytes: 10, maxWidth: 100, maxHeight: 100 }),
+    /limite/
+  );
+});
 
 test('el portal de clientes queda ligado a la empresa y se puede renovar', () => {
   const company = {

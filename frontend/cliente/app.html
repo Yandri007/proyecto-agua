@@ -15,8 +15,9 @@
         body { font-family: 'Inter', sans-serif; background: #f5f7fa; color: #1a1a2e; }
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
         .header { background: linear-gradient(135deg, #0077b6, #00b4d8); border-radius: 20px; padding: 20px 30px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; color: white; }
-        .logo { font-size: 28px; font-weight: 800; }
-        .logo span { color: #ffe66d; }
+        .logo { display:flex; align-items:center; min-width:0; font-size:22px; font-weight:800; }
+        .logo span { color:#ffe66d; overflow-wrap:anywhere; line-height:1.15; }
+        .client-company-logo { width:38px; height:38px; object-fit:contain; border-radius:7px; background:white; padding:3px; vertical-align:middle; margin-right:8px; }
         .user-info { background: rgba(255,255,255,0.15); padding: 8px 20px; border-radius: 40px; }
         .btn-volver { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 20px; border-radius: 30px; cursor: pointer; }
         .main-grid { display: grid; grid-template-columns: 1fr 350px; gap: 30px; }
@@ -100,14 +101,14 @@
         .notification-item strong { display:block; color:#173441; margin-bottom:4px; }
         .notification-item span, .notification-item small { display:block; color:#667085; line-height:1.45; }
         .notification-item small { margin-top:5px; font-size:11px; }
-        @media (max-width:760px) { .main-grid { grid-template-columns:1fr; } .programacion-item { grid-template-columns:1fr; } .programacion-actions { justify-content:flex-start; } }
+        @media (max-width:760px) { .header { align-items:flex-start; flex-direction:column; gap:14px; padding:18px; } .header > div:last-child { width:100%; flex-wrap:wrap; justify-content:flex-start; } .main-grid { grid-template-columns:1fr; } .programacion-item { grid-template-columns:1fr; } .programacion-actions { justify-content:flex-start; } }
     </style>
     <link rel="stylesheet" href="/assets/aquacontrol-ui.css">
 </head>
 <body class="aq-app aq-client">
     <div class="container">
         <div class="header">
-            <div class="logo"><img class="brand-mark" src="/assets/brand/aquacontrol-mark.svg" alt=""> Aqua<span>Control</span></div>
+            <div class="logo"><img id="empresaLogoCliente" class="client-company-logo" src="/assets/brand/aquacontrol-mark.svg" alt=""><span id="empresaNombreCliente">AquaControl</span></div>
             <div style="display: flex; gap: 15px;">
                 <button class="btn-volver" onclick="window.location.href='/'"><i class="fas fa-arrow-left"></i> Inicio</button>
                 <button class="notification-button" type="button" onclick="abrirNotificaciones()" title="Notificaciones" aria-label="Abrir notificaciones"><i class="fas fa-bell"></i><span id="notificacionesBadge" class="notification-badge" style="display:none;">0</span></button>
@@ -235,7 +236,18 @@
         });
 
         const { escapeHtml, showToast: mostrarToast } = AquaUI;
-        const getProductImage = (type) => productImageByType[type] || '/assets/brand/aquacontrol-mark.svg';
+        const getProductImage = product => product.imagen_url || productImageByType[product.tipo] || '/assets/brand/aquacontrol-mark.svg';
+
+        async function cargarMarcaEmpresa() {
+            try {
+                const marca = await AquaUI.requestJson(`${API}/branding`);
+                document.getElementById('empresaNombreCliente').textContent = marca.nombre;
+                document.getElementById('empresaLogoCliente').src = marca.logo_url || '/assets/brand/aquacontrol-mark.svg';
+                document.title = `${marca.nombre} - Pedidos`;
+            } catch (error) {
+                console.error('No fue posible cargar la identidad de la empresa:', error);
+            }
+        }
 
         function mostrarModalVaciarHistorial() { document.getElementById('modalVaciarHistorial').style.display = 'flex'; }
         function cerrarModalVaciarHistorial() { document.getElementById('modalVaciarHistorial').style.display = 'none'; }
@@ -265,7 +277,7 @@
                 return;
             }
             conectarWebSocket();
-            await cargarProductos();
+            await Promise.all([cargarMarcaEmpresa(), cargarProductos()]);
             await Promise.all([cargarDirecciones(), cargarMisPedidos(), cargarProgramaciones(), cargarNotificaciones()]);
             if (!clienteRefreshInterval) {
                 clienteRefreshInterval = setInterval(refrescarCliente, 30000);
@@ -317,6 +329,7 @@
             socket.on('pedido_actualizado', () => {
                 cargarMisPedidos();
             });
+            socket.on('branding_actualizada', cargarMarcaEmpresa);
 
             socket.on('notificacion', (notification) => {
                 mostrarToast(notification.titulo || 'Nueva notificación', 'info');
@@ -596,7 +609,7 @@
                 document.getElementById('productos').innerHTML = catalogoProductos.map(p => `
                     <div class="producto-card">
                         <div class="producto-media">
-                            <img src="${getProductImage(p.tipo)}" alt="${escapeHtml(p.nombre)}" width="720" height="720" loading="lazy">
+                            <img src="${getProductImage(p)}" alt="${escapeHtml(p.nombre)}" width="720" height="720" loading="lazy">
                         </div>
                         <div class="producto-nombre">${escapeHtml(p.nombre)}</div>
                         <div class="producto-precio">$${p.precio}</div>

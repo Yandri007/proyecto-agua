@@ -69,6 +69,9 @@ const initializeDatabase = async () => {
     await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS suscripcion_externa_id VARCHAR(160)');
     await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS registro_clientes_habilitado BOOLEAN NOT NULL DEFAULT TRUE');
     await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS registro_clientes_version INT NOT NULL DEFAULT 1');
+    await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS logo_data BYTEA');
+    await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS logo_mime VARCHAR(32)');
+    await client.query('ALTER TABLE empresas ADD COLUMN IF NOT EXISTS logo_actualizado_en TIMESTAMPTZ');
     await client.query(`ALTER TABLE empresas ADD COLUMN IF NOT EXISTS modulos JSONB NOT NULL
       DEFAULT '{"ventas_ruta": true, "recursos_humanos": false, "planta": false, "logistica": false}'::jsonb`);
     await client.query(`UPDATE empresas
@@ -109,13 +112,19 @@ const initializeDatabase = async () => {
       );
     }
 
-    const empresaResult = await client.query(
+    let empresaResult = await client.query(
       `INSERT INTO empresas (nombre, slug)
        VALUES ($1, $2)
-       ON CONFLICT (slug) DO UPDATE SET nombre = EXCLUDED.nombre
+       ON CONFLICT (slug) DO NOTHING
        RETURNING id`,
       [env.defaultEmpresaName, env.defaultEmpresaSlug]
     );
+    if (empresaResult.rowCount === 0) {
+      empresaResult = await client.query(
+        'SELECT id FROM empresas WHERE slug = $1',
+        [env.defaultEmpresaSlug]
+      );
+    }
     const defaultEmpresaId = empresaResult.rows[0].id;
 
     const hadEmailVerification = await columnExists(client, 'usuarios', 'email_verificado_en');
@@ -194,6 +203,9 @@ const initializeDatabase = async () => {
     await client.query('ALTER TABLE productos ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT TRUE');
     await client.query('ALTER TABLE productos ADD COLUMN IF NOT EXISTS es_retornable BOOLEAN NOT NULL DEFAULT FALSE');
     await client.query('ALTER TABLE productos ADD COLUMN IF NOT EXISTS deposito_envase DECIMAL(10,2) NOT NULL DEFAULT 0');
+    await client.query('ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagen_data BYTEA');
+    await client.query('ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagen_mime VARCHAR(32)');
+    await client.query('ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagen_actualizada_en TIMESTAMPTZ');
     await client.query('UPDATE productos SET empresa_id = $1 WHERE empresa_id IS NULL', [defaultEmpresaId]);
     await client.query('ALTER TABLE productos ALTER COLUMN empresa_id SET NOT NULL');
     await addConstraintIfMissing(
