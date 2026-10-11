@@ -246,13 +246,13 @@
                 <div class="filters-bar">
                     <div class="filter-group"><label for="rutaFecha">Fecha de operación</label><input id="rutaFecha" type="date" onchange="cargarRutasAdmin()"></div>
                     <div class="filter-group"><label for="rutaNombre">Nombre de ruta</label><input id="rutaNombre" maxlength="100" placeholder="Ruta norte AM"></div>
-                    <div class="filter-group"><label for="rutaRepartidor">Repartidor</label><select id="rutaRepartidor"><option value="">Selecciona un repartidor</option></select></div>
+                    <div class="filter-group"><label for="rutaRepartidor">Repartidor</label><select id="rutaRepartidor" onchange="cargarRutasAdmin()"><option value="">Selecciona un repartidor</option></select></div>
                     <button class="btn-filter" type="button" onclick="cargarRutasAdmin()"><i class="fas fa-rotate"></i> Actualizar</button>
                 </div>
                 <div class="route-planner-grid">
                     <section class="route-panel">
                         <h3><i class="fas fa-boxes-stacked"></i> Pedidos disponibles</h3>
-                        <p>Selecciona pedidos pendientes para la fecha elegida.</p>
+                        <p>Selecciona pedidos pendientes o asignados al repartidor elegido.</p>
                         <div id="pedidosRutaDisponibles" class="route-order-list"></div>
                     </section>
                     <section class="route-panel">
@@ -1070,9 +1070,12 @@
         async function cargarRutasAdmin() {
             prepararPlanificadorRutas();
             const date = document.getElementById('rutaFecha').value;
+            const driverId = document.getElementById('rutaRepartidor').value;
+            const availableParams = new URLSearchParams({ fecha: date });
+            if (driverId) availableParams.set('repartidor_id', driverId);
             try {
                 const [available, routes] = await Promise.all([
-                    requestJson(`${API}/rutas/disponibles?fecha=${encodeURIComponent(date)}`),
+                    requestJson(`${API}/rutas/disponibles?${availableParams.toString()}`),
                     requestJson(`${API}/rutas?fecha=${encodeURIComponent(date)}`)
                 ]);
                 pedidosRuta = available;
@@ -1095,10 +1098,13 @@
             }
             container.innerHTML = pedidosRuta.map(order => {
                 const selected = seleccionRuta.includes(Number(order.id));
+                const assignmentStatus = order.estado === 'asignado'
+                    ? '<span class="table-detail">Asignado al repartidor seleccionado</span>'
+                    : '<span class="badge badge-pendiente">Pendiente</span>';
                 return `<label class="route-order ${selected ? 'selected' : ''}">
                     <input type="checkbox" ${selected ? 'checked' : ''} onchange="alternarPedidoRuta(${order.id})">
                     <span><strong>Pedido #${order.id} · ${escapeHtml(order.cliente_nombre)}</strong><small>${escapeHtml(order.direccion_entrega)}<br>$${Number(order.total).toFixed(2)} · ${order.latitud_entrega !== null ? 'Ubicación disponible' : 'Sin coordenadas'}</small></span>
-                    <span class="badge badge-pendiente">Pendiente</span>
+                    ${assignmentStatus}
                 </label>`;
             }).join('');
         }

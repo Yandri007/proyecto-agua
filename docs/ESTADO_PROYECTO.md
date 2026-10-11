@@ -86,7 +86,8 @@ Empresa: `AquaControl Demo`
 
 Código de empresa: `aqua-demo`
 
-Contraseña común: `AquaDemo-2026!`
+Clave de acceso: definir `DEMO_USER_PASSWORD` localmente en `backend/.env`;
+no hay una clave predeterminada en el repositorio.
 
 | Rol | Correo |
 | --- | --- |

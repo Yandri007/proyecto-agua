@@ -1,10 +1,14 @@
 const assert = require('node:assert/strict');
+require('../config/env');
 
 const baseUrl = (process.env.TEST_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const requests = Math.max(20, Math.min(2000, Number(process.env.LOAD_TEST_REQUESTS || 120)));
 const concurrency = Math.max(1, Math.min(50, Number(process.env.LOAD_TEST_CONCURRENCY || 10)));
 const email = process.env.LOAD_TEST_EMAIL || 'demo.cliente@aquacontrol.com';
-const password = process.env.LOAD_TEST_PASSWORD || 'AquaDemo-2026!';
+const password = process.env.LOAD_TEST_PASSWORD || process.env.DEMO_USER_PASSWORD;
+if (!password) {
+  throw new Error('Set LOAD_TEST_PASSWORD or DEMO_USER_PASSWORD in backend/.env');
+}
 
 if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl) && process.env.ALLOW_LOAD_TEST !== 'true') {
   throw new Error('Define ALLOW_LOAD_TEST=true para ejecutar contra un host remoto autorizado');

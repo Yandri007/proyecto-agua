@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: aquacontrol
-      POSTGRES_USER: aquacontrol
-      POSTGRES_PASSWORD: local-aquacontrol-password
+      POSTGRES_DB: ${DB_NAME:?Set DB_NAME in backend/.env}
+      POSTGRES_USER: ${DB_USER:?Set DB_USER in backend/.env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in backend/.env}
     volumes:
       - aquacontrol_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aquacontrol -d aquacontrol"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?Set DB_USER in backend/.env} -d ${DB_NAME:?Set DB_NAME in backend/.env}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -24,13 +24,13 @@ services:
       NODE_ENV: development
       PORT: 3000
       APP_URL: http://localhost:3000
-      DB_USER: aquacontrol
-      DB_PASSWORD: local-aquacontrol-password
+      DB_USER: ${DB_USER:?Set DB_USER in backend/.env}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in backend/.env}
       DB_HOST: database
       DB_PORT: 5432
-      DB_NAME: aquacontrol
+      DB_NAME: ${DB_NAME:?Set DB_NAME in backend/.env}
       DB_SSL: "false"
-      JWT_SECRET: local-development-secret-change-before-production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in backend/.env}
       DEFAULT_EMPRESA_NAME: AquaControl Demo
       DEFAULT_EMPRESA_SLUG: aqua-demo
     ports:

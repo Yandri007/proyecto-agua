@@ -2,7 +2,10 @@ const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
 const env = require('../config/env');
 
-const demoPassword = 'AquaDemo-2026!';
+const demoPassword = process.env.DEMO_USER_PASSWORD;
+if (!demoPassword || demoPassword.length < 12) {
+  throw new Error('Define DEMO_USER_PASSWORD localmente con al menos 12 caracteres');
+}
 const demoUsers = [
   {
     nombre: 'Administrador Demo',
@@ -194,7 +197,7 @@ const run = async () => {
 
     console.log(`Empresa: ${company.nombre} (${company.slug})`);
     for (const user of demoUsers) {
-      console.log(`${user.rol}: ${user.email} / ${demoPassword}`);
+      console.log(`${user.rol}: ${user.email}`);
     }
   } catch (error) {
     await client.query('ROLLBACK');

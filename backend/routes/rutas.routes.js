@@ -99,15 +99,22 @@ router.use(verifyToken, requireActiveSubscription);
 
 router.get('/disponibles', checkRole(['admin']), async (req, res) => {
   const date = req.query.fecha || todayEcuador();
+  const driverId = req.query.repartidor_id === undefined || req.query.repartidor_id === ''
+    ? null
+    : Number(req.query.repartidor_id);
   if (!validDate(date)) return res.status(400).json({ error: 'Fecha inválida' });
+  if (driverId !== null && (!Number.isInteger(driverId) || driverId <= 0)) {
+    return res.status(400).json({ error: 'Repartidor inválido' });
+  }
   try {
     const result = await pool.query(
-      `SELECT p.id, p.cliente_id, p.total, p.metodo_pago, p.direccion_entrega,
+      `SELECT p.id, p.cliente_id, p.estado, p.repartidor_id, p.total, p.metodo_pago, p.direccion_entrega,
               p.indicaciones_entrega, p.latitud_entrega, p.longitud_entrega,
               p.fecha_programada, p.created_at, u.nombre AS cliente_nombre
        FROM pedidos p
        JOIN usuarios u ON u.id = p.cliente_id AND u.empresa_id = p.empresa_id
-       WHERE p.empresa_id = $1 AND p.estado = 'pendiente'
+       WHERE p.empresa_id = $1
+         AND (p.estado = 'pendiente' OR (p.estado = 'asignado' AND p.repartidor_id = $3))
          AND (p.fecha_programada IS NULL OR p.fecha_programada <= $2::date)
          AND NOT EXISTS (
            SELECT 1 FROM paradas_ruta pr
@@ -115,7 +122,7 @@ router.get('/disponibles', checkRole(['admin']), async (req, res) => {
          )
        ORDER BY COALESCE(p.fecha_programada, p.created_at::date), p.created_at, p.id
        LIMIT 200`,
-      [req.user.empresa_id, date]
+      [req.user.empresa_id, date, driverId]
     );
     return res.json(result.rows);
   } catch (error) {
@@ -180,7 +187,13 @@ router.post('/', checkRole(['admin']), async (req, res) => {
       return res.status(404).json({ error: 'Repartidor no disponible' });
     }
     const orders = await client.query(
-      `SELECT p.id, p.cliente_id, p.estado, p.fecha_programada, u.nombre AS cliente_nombre
+      `SELECT p.id, p.cliente_id, p.estado, p.repartidor_id, p.fecha_programada,
+              u.nombre AS cliente_nombre,
+              EXISTS (
+                SELECT 1 FROM paradas_ruta pr
+                WHERE pr.pedido_id = p.id AND pr.empresa_id = p.empresa_id
+                  AND pr.estado IN ('pendiente', 'en_camino')
+              ) AS tiene_parada_activa
        FROM pedidos p
        JOIN usuarios u ON u.id = p.cliente_id AND u.empresa_id = p.empresa_id
        WHERE p.empresa_id = $1 AND p.id = ANY($2::int[])
@@ -190,7 +203,11 @@ router.post('/', checkRole(['admin']), async (req, res) => {
     const orderById = new Map(orders.rows.map((item) => [Number(item.id), item]));
     const unavailable = orderIds.some((id) => {
       const order = orderById.get(id);
-      return !order || order.estado !== 'pendiente'
+      const canUsePendingOrder = order?.estado === 'pendiente';
+      const alreadyAssignedToDriver = order?.estado === 'asignado'
+        && Number(order.repartidor_id) === driverId;
+      return !order || (!canUsePendingOrder && !alreadyAssignedToDriver)
+        || order.tiene_parada_activa
         || (order.fecha_programada && databaseDate(order.fecha_programada) > date);
     });
     if (unavailable || orders.rowCount !== orderIds.length) {

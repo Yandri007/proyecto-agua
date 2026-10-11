@@ -94,21 +94,24 @@ cd backend
 npm run seed:demo
 ```
 
+Configura `DEMO_USER_PASSWORD` en `backend/.env` antes de crear las cuentas.
+El comando no publica ni imprime esa contraseña.
+
 Este comando no se ejecuta automáticamente y rechaza su uso cuando
 `NODE_ENV=production`.
 
 Las cuentas demo incluyen `admin`, `repartidor`, `cliente`, `rh` y
-`jefe_planta`; todas usan `AquaDemo-2026!`. El detalle está en
+`jefe_planta`; requieren una contraseña definida localmente. El detalle está en
 [`docs/ESTADO_PROYECTO.md`](docs/ESTADO_PROYECTO.md).
 
 También puede iniciarse el entorno local completo desde la raíz:
 
 ```bash
-docker compose up --build
+docker compose --env-file backend/.env up --build
 ```
 
-El archivo `docker-compose.yml` es solo para desarrollo y usa credenciales
-locales. No debe reutilizarse sin cambios en producción.
+El archivo `docker-compose.yml` es solo para desarrollo y lee sus variables
+desde `backend/.env`. No debe reutilizarse sin cambios en producción.
 
 ## Verificación
 
@@ -136,8 +139,9 @@ ventas en ruta, pedidos a direcciones distintas, stock, GPS,
 comprobantes, cierres, reportes y la CSP con nonce,
 y elimina los datos de prueba al terminar.
 
-`npm run test:load` realiza una prueba de humo local y no apunta a servidores
-remotos salvo que se habilite explícitamente con `ALLOW_LOAD_TEST=true`.
+`npm run test:load` realiza una prueba de humo local con la cuenta demo y
+`DEMO_USER_PASSWORD`; no apunta a servidores remotos salvo que se habilite
+explícitamente con `ALLOW_LOAD_TEST=true`.
 
 `npm run test:deployment` valida un staging HTTPS sin modificar pedidos. La
 guia de infraestructura esta en
